@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phantom Messenger — Private by Architecture</title>
+<meta name="description" content="The most secure encrypted messaging app ever built. Zero metadata. Bitcoin economy. Military grade encryption. Be seen by who you choose.">
+<meta property="og:title" content="Phantom Messenger — Private by Architecture">
+<meta property="og:description" content="The most secure encrypted messaging app ever built. Zero metadata. Bitcoin economy. Military grade encryption.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://phantommessenger.app">
+<meta property="og:image" content="https://phantommessenger.app/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Phantom Messenger — Private by Architecture">
+<meta name="twitter:description" content="The most secure encrypted messaging app ever built. Zero metadata. Bitcoin economy. Military grade encryption.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%23000'/><text x='50%25' y='55%25' text-anchor='middle' dominant-baseline='central' font-family='monospace' font-size='20' font-weight='bold' fill='%2300FF41'>P</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg: #000000;
+  --card-bg: #0A0A0A;
+  --green: #00FF41;
+  --green-dark: #008F11;
+  --white: #FFFFFF;
+  --grey: #888888;
+  --grey-dark: #333333;
+  --red: #661111;
+  --font-mono: 'Space Mono', monospace;
+  --font-sans: 'Inter', sans-serif;
+  --glow: 0 0 20px rgba(0, 255, 65, 0.3);
+  --glow-strong: 0 0 40px rgba(0, 255, 65, 0.5);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* Scanline overlay */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 65, 0.03) 2px,
+    rgba(0, 255, 65, 0.03) 4px
+  );
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--green-dark); border-radius: 3px; }
+
+/* Selection */
+::selection { background: var(--green); color: var(--bg); }
+
+/* ========== NAV ========== */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(20px);
+  background: rgba(0,0,0,0.7);
+  border-bottom: 1px solid rgba(0,255,65,0.1);
+  transition: all 0.3s;
+}
+
+.nav-logo {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 3px;
+  text-decoration: none;
+}
+.nav-logo .cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  background: var(--green);
+  margin-left: 4px;
+  vertical-align: middle;
+  animation: blink 1s step-end infinite;
+}
+
+.nav-links { display: flex; gap: 2rem; list-style: none; }
+.nav-links a {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--grey);
+  text-decoration: none;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  transition: color 0.3s, text-shadow 0.3s;
+}
+.nav-links a:hover {
+  color: var(--green);
+  text-shadow: 0 0 10px rgba(0,255,65,0.5);
+}
+
+.nav-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--green-dark);
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+/* ========== HERO ========== */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6rem 2rem 4rem;
+  overflow: hidden;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 900px;
+}
+
+.hero-label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--green);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  margin-bottom: 2rem;
+  opacity: 0;
+  animation: fadeInUp 1s 0.5s forwards;
+}
+
+.hero-title {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: clamp(3.5rem, 10vw, 8rem);
+  line-height: 0.95;
+  color: var(--white);
+  text-shadow: 0 0 60px rgba(0,255,65,0.15);
+  margin-bottom: 2rem;
+  animation: glitch-anim 5s infinite;
+  position: relative;
+}
+.hero-title::before,
+.hero-title::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  opacity: 0.8;
+}
+.hero-title::before {
+  animation: glitch-1 3s infinite;
+  color: var(--green);
+  z-index: -1;
+  clip-path: inset(0 0 65% 0);
+}
+.hero-title::after {
+  animation: glitch-2 3s infinite;
+  color: rgba(0,255,65,0.3);
+  z-index: -1;
+  clip-path: inset(65% 0 0 0);
+}
+
+.hero-tagline {
+  font-family: var(--font-mono);
+  font-size: clamp(0.9rem, 2vw, 1.2rem);
+  color: var(--green);
+  margin-bottom: 3rem;
+  min-height: 2em;
+}
+.hero-tagline .typed-cursor {
+  display: inline-block;
+  width: 10px;
+  height: 1.2em;
+  background: var(--green);
+  vertical-align: middle;
+  animation: blink 0.7s step-end infinite;
+  margin-left: 2px;
+}
+
+.hero-buttons {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+  opacity: 0;
+  animation: fadeInUp 1s 3s forwards;
+}
+
+.btn-primary {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  padding: 1rem 2.5rem;
+  background: var(--green);
+  color: var(--bg);
+  border: 2px solid var(--green);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.3s;
+  animation: pulse-green 2s infinite;
+  font-weight: 700;
+}
+.btn-primary:hover {
+  box-shadow: var(--glow-strong);
+  transform: translateY(-2px);
+}
+
+.btn-secondary {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  padding: 1rem 2.5rem;
+  background: transparent;
+  color: var(--green);
+  border: 2px solid var(--green);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.3s;
+  font-weight: 700;
+}
+.btn-secondary:hover {
+  background: rgba(0,255,65,0.1);
+  box-shadow: var(--glow);
+  transform: translateY(-2px);
+}
+
+.hero-subtext {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--grey);
+  letter-spacing: 1px;
+  line-height: 1.8;
+  opacity: 0;
+  animation: fadeInUp 1s 3.5s forwards;
+}
+
+.scroll-indicator {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 2;
+  opacity: 0;
+  animation: fadeInUp 1s 4s forwards;
+}
+.scroll-indicator .arrow {
+  display: block;
+  color: var(--green);
+  font-size: 1.5rem;
+  animation: bounce 2s infinite;
+}
+.scroll-indicator span {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--green-dark);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+/* ========== STATUS BAR ========== */
+.status-bar {
+  position: relative;
+  overflow: hidden;
+  background: #050505;
+  border-top: 1px solid rgba(0,255,65,0.15);
+  border-bottom: 1px solid rgba(0,255,65,0.15);
+  padding: 1rem 0;
+}
+.status-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,255,65,0.04) 1px, rgba(0,255,65,0.04) 2px);
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker 30s linear infinite;
+}
+.ticker-track span {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--green);
+  letter-spacing: 2px;
+  white-space: nowrap;
+  padding: 0 1.5rem;
+}
+
+/* ========== SECTIONS BASE ========== */
+.section {
+  padding: 6rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--green);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  font-family: var(--font-mono);
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.section-subtitle {
+  font-family: var(--font-mono);
+  font-size: clamp(0.9rem, 2vw, 1.1rem);
+  color: var(--grey);
+  margin-bottom: 3rem;
+}
+
+/* ========== TERMINAL WINDOW ========== */
+.terminal {
+  background: #0A0A0A;
+  border: 1px solid rgba(0,255,65,0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 3rem;
+  box-shadow: 0 0 30px rgba(0,255,65,0.05);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.8rem 1rem;
+  background: #111;
+  border-bottom: 1px solid rgba(0,255,65,0.1);
+}
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.terminal-dot.red { background: #3a1111; }
+.terminal-dot.yellow { background: #2a2a0a; }
+.terminal-dot.green { background: var(--green-dark); }
+.terminal-title {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--grey);
+  margin-left: 0.5rem;
+}
+
+.terminal-body {
+  padding: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 2;
+  color: var(--green);
+}
+.terminal-body .line {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.terminal-body .line.visible {
+  opacity: 1;
+  transform: translateY(0);
+  transition: all 0.4s ease;
+}
+.terminal-body .ok { color: var(--green); }
+.terminal-body .prompt { color: var(--grey); }
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  background: var(--green);
+  animation: blink 1s step-end infinite;
+  vertical-align: middle;
+}
+
+/* ========== WHAT IS PHANTOM ========== */
+.what-is .content-text {
+  max-width: 800px;
+}
+.what-is .content-text h3 {
+  font-family: var(--font-mono);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  color: var(--white);
+  margin-bottom: 1.5rem;
+  font-weight: 700;
+}
+.what-is .content-text p {
+  font-size: 1rem;
+  color: #ccc;
+  line-height: 1.8;
+}
+
+/* ========== SECURITY SHOWCASE ========== */
+.security-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+
+.security-card {
+  background: var(--card-bg);
+  border: 1px solid rgba(0,255,65,0.12);
+  padding: 2.5rem 2rem;
+  position: relative;
+  transition: all 0.4s;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.security-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.security-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+}
+.security-card:hover {
+  border-color: rgba(0,255,65,0.3);
+  box-shadow: 0 0 40px rgba(0,255,65,0.08);
+  transform: translateY(-4px);
+}
+
+.security-icon {
+  font-size: 2rem;
+  margin-bottom: 1.2rem;
+}
+
+.security-title {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--green);
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 1rem;
+}
+
+.security-detail {
+  font-size: 0.85rem;
+  color: #aaa;
+  line-height: 1.7;
+}
+
+@media (max-width: 640px) {
+  .security-grid { grid-template-columns: 1fr; }
+}
+
+/* ========== FEATURES GRID ========== */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.feature-card {
+  background: var(--card-bg);
+  border: 1px solid rgba(0,255,65,0.08);
+  border-top: 2px solid var(--green-dark);
+  padding: 2rem 1.5rem;
+  transition: all 0.4s;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.feature-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.feature-card:hover {
+  border-color: rgba(0,255,65,0.3);
+  box-shadow: 0 0 30px rgba(0,255,65,0.1);
+  transform: translateY(-4px);
+}
+
+.feature-icon {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.feature-name {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--white);
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  letter-spacing: 1px;
+}
+
+.feature-desc {
+  font-size: 0.8rem;
+  color: var(--grey);
+  line-height: 1.5;
+}
+
+/* ========== COMPARISON TABLE ========== */
+.comparison-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.comparison-table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.comparison-table thead th {
+  padding: 1rem;
+  text-align: center;
+  color: var(--green);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--green-dark);
+  font-size: 0.75rem;
+}
+.comparison-table thead th:first-child { text-align: left; }
+.comparison-table thead th.phantom-col {
+  background: rgba(0,255,65,0.05);
+  box-shadow: inset 0 0 20px rgba(0,255,65,0.05);
+}
+
+.comparison-table tbody td {
+  padding: 0.8rem 1rem;
+  text-align: center;
+  border-bottom: 1px solid #111;
+  color: var(--grey);
+}
+.comparison-table tbody td:first-child {
+  text-align: left;
+  color: var(--white);
+}
+.comparison-table tbody td.phantom-col {
+  background: rgba(0,255,65,0.03);
+}
+
+.comparison-table tbody tr:hover td { background: rgba(0,255,65,0.02); }
+.comparison-table tbody tr:hover td.phantom-col { background: rgba(0,255,65,0.06); }
+
+.check { color: var(--green); font-size: 1.1rem; }
+.cross { color: #661111; font-size: 1.1rem; }
+
+.comparison-result {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--green);
+  text-align: center;
+  margin-top: 2rem;
+  letter-spacing: 2px;
+}
+
+/* ========== PRICING ========== */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+.pricing-card {
+  background: var(--card-bg);
+  border: 1px solid #222;
+  padding: 2.5rem 2rem;
+  position: relative;
+  transition: all 0.4s;
+}
+.pricing-card:hover {
+  transform: translateY(-4px);
+}
+
+.pricing-card.essential {
+  border-color: rgba(255,255,255,0.2);
+  transform: translateY(-8px);
+}
+.pricing-card.essential:hover { transform: translateY(-12px); }
+
+.pricing-card.pro {
+  border-color: var(--green);
+  box-shadow: 0 0 40px rgba(0,255,65,0.1);
+}
+.pricing-card.pro:hover {
+  box-shadow: 0 0 60px rgba(0,255,65,0.2);
+  transform: translateY(-4px);
+}
+
+.pricing-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--green);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  border: 1px solid var(--green-dark);
+  padding: 0.25rem 0.5rem;
+}
+
+.pricing-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+.pricing-card.free .pricing-label { color: var(--grey); }
+.pricing-card.essential .pricing-label { color: var(--white); }
+.pricing-card.pro .pricing-label { color: var(--green); text-shadow: 0 0 10px rgba(0,255,65,0.5); }
+
+.pricing-price {
+  font-family: var(--font-mono);
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--white);
+  margin-bottom: 0.25rem;
+}
+.pricing-price small {
+  font-size: 0.8rem;
+  color: var(--grey);
+  font-weight: 400;
+}
+
+.pricing-features {
+  list-style: none;
+  margin: 2rem 0;
+}
+.pricing-features li {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--grey);
+  padding: 0.4rem 0;
+  padding-left: 1.2rem;
+  position: relative;
+  line-height: 1.5;
+}
+.pricing-features li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--green-dark);
+}
+.pricing-card.pro .pricing-features li { color: var(--green); }
+.pricing-card.pro .pricing-features li::before { color: var(--green); }
+
+.pricing-btn {
+  display: block;
+  width: 100%;
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: all 0.3s;
+  font-weight: 700;
+}
+.pricing-card.free .pricing-btn {
+  background: transparent;
+  color: var(--grey);
+  border: 1px solid var(--grey-dark);
+}
+.pricing-card.free .pricing-btn:hover { border-color: var(--grey); }
+
+.pricing-card.essential .pricing-btn {
+  background: var(--white);
+  color: var(--bg);
+}
+.pricing-card.essential .pricing-btn:hover { box-shadow: 0 0 20px rgba(255,255,255,0.2); }
+
+.pricing-card.pro .pricing-btn {
+  background: var(--green);
+  color: var(--bg);
+  animation: pulse-green 2s infinite;
+}
+.pricing-card.pro .pricing-btn:hover { box-shadow: var(--glow-strong); }
+
+.pricing-note {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--grey);
+  margin-top: 3rem;
+  letter-spacing: 1px;
+}
+
+/* ========== HOW IT WORKS ========== */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  position: relative;
+  padding-left: 3rem;
+}
+.steps::before {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-left: 2px dashed var(--green-dark);
+}
+
+.step {
+  position: relative;
+  opacity: 0;
+  transform: translateX(-20px);
+  transition: all 0.6s;
+}
+.step.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.step-number {
+  position: absolute;
+  left: -3rem;
+  top: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--green);
+  border: 1px solid var(--green-dark);
+  background: var(--bg);
+  z-index: 1;
+}
+
+.step-title {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--white);
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 0.75rem;
+}
+
+.step-desc {
+  font-size: 0.9rem;
+  color: var(--grey);
+  line-height: 1.7;
+  max-width: 600px;
+}
+
+/* ========== BITCOIN ECONOMY ========== */
+.bitcoin-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  align-items: center;
+}
+
+.bitcoin-text h3 {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  color: var(--green);
+  letter-spacing: 2px;
+  margin-bottom: 2rem;
+}
+
+.bitcoin-points {
+  list-style: none;
+}
+.bitcoin-points li {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: #ccc;
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  line-height: 1.5;
+}
+.bitcoin-points li::before {
+  content: '\25B8';
+  position: absolute;
+  left: 0;
+  color: var(--green);
+}
+
+.bitcoin-fees {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--green);
+  letter-spacing: 2px;
+  margin-top: 2rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(0,255,65,0.15);
+  display: inline-block;
+}
+
+.bitcoin-visual {
+  position: relative;
+  height: 400px;
+}
+#particle-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+/* ========== WAITLIST ========== */
+.waitlist {
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  padding: 8rem 2rem;
+}
+.waitlist-content {
+  position: relative;
+  z-index: 2;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.waitlist-title {
+  font-family: var(--font-mono);
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+}
+
+.waitlist-subtitle {
+  font-size: 1rem;
+  color: var(--grey);
+  margin-bottom: 0.5rem;
+}
+.waitlist-note {
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 3rem;
+}
+
+.waitlist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 450px;
+  margin: 0 auto 2rem;
+}
+
+.waitlist-input {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 1rem 1.2rem;
+  background: #0A0A0A;
+  border: 1px solid #222;
+  color: var(--white);
+  outline: none;
+  letter-spacing: 1px;
+  transition: all 0.3s;
+}
+.waitlist-input::placeholder { color: #444; }
+.waitlist-input:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 20px rgba(0,255,65,0.1);
+}
+
+.waitlist-submit {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  padding: 1rem;
+  background: var(--green);
+  color: var(--bg);
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.3s;
+}
+.waitlist-submit:hover {
+  box-shadow: var(--glow-strong);
+}
+
+.waitlist-disclaimer {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #444;
+  line-height: 1.8;
+  letter-spacing: 0.5px;
+}
+
+.waitlist-success {
+  display: none;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--green);
+  line-height: 2;
+  text-align: left;
+  max-width: 450px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  border: 1px solid rgba(0,255,65,0.2);
+  background: rgba(0,255,65,0.02);
+}
+
+/* ========== FOOTER ========== */
+.footer {
+  border-top: 2px solid var(--green-dark);
+  padding: 4rem 2rem 2rem;
+  background: #020202;
+}
+
+.footer-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 3rem;
+  margin-bottom: 3rem;
+}
+
+.footer-brand {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--white);
+  letter-spacing: 3px;
+  margin-bottom: 0.75rem;
+}
+.footer-tagline {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--grey);
+  margin-bottom: 1rem;
+}
+.footer-copy {
+  font-size: 0.7rem;
+  color: #444;
+}
+
+.footer-heading {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--green);
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+
+.footer-links {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.footer-links a {
+  font-size: 0.8rem;
+  color: var(--grey);
+  text-decoration: none;
+  transition: color 0.3s;
+}
+.footer-links a:hover { color: var(--green); }
+
+.footer-social {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.footer-social a {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--grey);
+  text-decoration: none;
+  font-size: 0.8rem;
+  transition: all 0.3s;
+}
+.footer-social a:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.footer-email {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--grey);
+  text-decoration: none;
+}
+.footer-email:hover { color: var(--green); }
+
+.footer-bottom {
+  border-top: 1px solid #111;
+  padding-top: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.footer-ticker {
+  display: flex;
+  width: max-content;
+  animation: ticker 25s linear infinite;
+}
+.footer-ticker span {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--green-dark);
+  letter-spacing: 3px;
+  white-space: nowrap;
+  padding: 0 1rem;
+}
+
+/* ========== ANIMATIONS ========== */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glitch-1 {
+  0%, 100% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+}
+
+@keyframes glitch-2 {
+  0%, 100% { transform: translate(0); }
+  20% { transform: translate(2px, -1px); }
+  40% { transform: translate(2px, 1px); }
+  60% { transform: translate(-2px, -1px); }
+  80% { transform: translate(-2px, 1px); }
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 10px rgba(0,255,65,0.2); }
+  50% { box-shadow: 0 0 30px rgba(0,255,65,0.4); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(8px); }
+}
+
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Reveal animation class */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 900px) {
+  .features-grid { grid-template-columns: repeat(2, 1fr); }
+  .pricing-grid { grid-template-columns: 1fr; max-width: 450px; margin: 0 auto; }
+  .pricing-card.essential { transform: none; }
+  .bitcoin-section { grid-template-columns: 1fr; }
+  .bitcoin-visual { height: 300px; }
+  .footer-grid { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+@media (max-width: 640px) {
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: rgba(0,0,0,0.95);
+    flex-direction: column;
+    padding: 2rem;
+    gap: 1.5rem;
+    border-bottom: 1px solid rgba(0,255,65,0.1);
+  }
+  .nav-links.open { display: flex; }
+  .nav-toggle { display: block; }
+  .features-grid { grid-template-columns: 1fr; }
+  .hero-buttons { flex-direction: column; align-items: center; }
+  .section { padding: 4rem 1.5rem; }
+  .steps { padding-left: 2.5rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ========== NAV ========== -->
+<nav class="nav" id="nav">
+  <a href="#" class="nav-logo">PHANTOM MESSENGER<span class="cursor"></span></a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pricing">Pricing</a></li>
+    <li><a href="#why-phantom">Why Phantom</a></li>
+    <li><a href="#waitlist">Get Access</a></li>
+  </ul>
+  <button class="nav-toggle" id="navToggle">[=]</button>
+</nav>
+
+<!-- ========== HERO ========== -->
+<section class="hero" id="hero">
+  <div class="hero-content">
+    <div class="hero-label">[ CLASSIFIED COMMUNICATION ]</div>
+    <h1 class="hero-title" data-text="PHANTOM&#10;MESSENGER">PHANTOM<br>MESSENGER</h1>
+    <div class="hero-tagline" id="heroTagline"><span class="typed-cursor"></span></div>
+    <div class="hero-buttons">
+      <a href="#waitlist" class="btn-primary">[ JOIN THE WAITLIST ]</a>
+      <a href="#features" class="btn-secondary">[ VIEW FEATURES ]</a>
+    </div>
+    <p class="hero-subtext">No phone number required. No identity required. No compromises.</p>
+  </div>
+  <div class="scroll-indicator">
+    <span class="arrow">&#8964;</span>
+    <span>SCROLL TO DECRYPT</span>
+  </div>
+</section>
+
+<!-- ========== STATUS BAR ========== -->
+<div class="status-bar">
+  <div class="ticker-track">
+    <span>[ ENCRYPTION: ACTIVE ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ METADATA: NULL ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ IP LOG: DISABLED ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ MESSAGES STORED: 0 ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ SURVEILLANCE: BLOCKED ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ STATUS: SECURE ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ ENCRYPTION: ACTIVE ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ METADATA: NULL ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ IP LOG: DISABLED ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ MESSAGES STORED: 0 ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ SURVEILLANCE: BLOCKED ]</span><span>&middot;&middot;&middot;</span>
+    <span>[ STATUS: SECURE ]</span><span>&middot;&middot;&middot;</span>
+  </div>
+</div>
+
+<!-- ========== WHAT IS PHANTOM ========== -->
+<section class="section what-is" id="why-phantom">
+  <div class="reveal">
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span class="terminal-dot red"></span>
+        <span class="terminal-dot yellow"></span>
+        <span class="terminal-dot green"></span>
+        <span class="terminal-title">phantom_messenger.exe</span>
+      </div>
+      <div class="terminal-body" id="terminalBody">
+        <div class="line"><span class="prompt">&gt;</span> INITIALIZING PHANTOM MESSENGER...</div>
+        <div class="line"><span class="prompt">&gt;</span> ENCRYPTION PROTOCOL: PHANTOM PROTOCOL <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> METADATA COLLECTION: DISABLED <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> IP LOGGING: NULL <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> SERVER KNOWLEDGE: ZERO <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> SCREENSHOT CAPTURE: BLOCKED <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> SCREEN RECORDING: BLOCKED <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> SCREEN SHARING: BLOCKED <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> PEGASUS SPYWARE: NEUTRALIZED <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> FAKE NETWORK DETECTION: ACTIVE <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> SERVER LOCATION: OUTSIDE US JURISDICTION <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> BITCOIN WALLET: INTEGRATED <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> LIGHTNING NETWORK: ACTIVE <span class="ok">[OK]</span></div>
+        <div class="line"><span class="prompt">&gt;</span> SYSTEM STATUS: FULLY OPERATIONAL</div>
+        <div class="line"><span class="terminal-cursor"></span></div>
+      </div>
+    </div>
+    <div class="content-text">
+      <h3>The Last Messenger You Will Ever Need</h3>
+      <p>Phantom Messenger is built on a single principle — your privacy is mathematically enforced, not just promised. We use military grade Phantom Protocol encryption, zero knowledge architecture, and sealed sender technology to ensure that even we cannot read your messages. Not won't. Cannot. There is a difference. Built with a fully integrated Bitcoin economy so you can communicate and transact privately in one place.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== SECURITY SHOWCASE ========== -->
+<section class="section security-section" id="security">
+  <div class="reveal">
+    <div class="section-label">[ THREAT NEUTRALIZATION ]</div>
+    <div class="section-title">Built For The Highest Levels Of Privacy</div>
+    <div class="section-subtitle">Every attack vector. Closed.</div>
+  </div>
+  <div class="security-grid reveal">
+    <div class="security-card">
+      <div class="security-icon">&#x1F310;</div>
+      <div class="security-title">Servers Outside US Jurisdiction</div>
+      <div class="security-detail">All Phantom infrastructure operates outside United States jurisdiction. No FISA court orders. No NSA taps. No Patriot Act subpoenas. Our servers are located in privacy-respecting jurisdictions with strong data protection laws. Even if a government comes knocking — they are knocking on the wrong door, in the wrong country, under the wrong legal framework.</div>
+    </div>
+    <div class="security-card">
+      <div class="security-icon">&#x1F4F5;</div>
+      <div class="security-title">Total Screen Capture Defense</div>
+      <div class="security-detail">Phantom enforces FLAG_SECURE at the OS level on every single screen in the app. Screenshots are blocked. Screen recordings are blocked. Screen sharing is blocked. Screen mirroring is blocked. No one can capture what is on your screen — not a person looking over your shoulder with a screen recorder, not an app running in the background, not a remote access tool. Your conversations exist only in the moment they are read.</div>
+    </div>
+    <div class="security-card">
+      <div class="security-icon">&#x1F577;</div>
+      <div class="security-title">Pegasus Spyware Defense</div>
+      <div class="security-detail">NSO Group's Pegasus is the most sophisticated commercial spyware ever deployed — used by governments worldwide to surveil journalists, activists, and political targets. Phantom is purpose-built to resist it. Our anti-exploitation layer detects and blocks zero-click injection vectors, prevents privilege escalation, and isolates the app from compromised OS components. Even on an infected device, Phantom fights back.</div>
+    </div>
+    <div class="security-card">
+      <div class="security-icon">&#x1F4E1;</div>
+      <div class="security-title">Fake Network Protection</div>
+      <div class="security-detail">IMSI catchers — also known as Stingrays — are fake cell towers used by law enforcement and intelligence agencies to intercept mobile communications. Phantom detects rogue base stations, fake Wi-Fi access points, and man-in-the-middle network attacks in real time. If your connection is being intercepted, Phantom alerts you, blocks transmission, and reroutes through verified encrypted channels. Your data never touches a compromised network.</div>
+    </div>
+    <div class="security-card">
+      <div class="security-icon">&#x1F6E1;</div>
+      <div class="security-title">Anti-Forensics At Every Layer</div>
+      <div class="security-detail">If your device is seized, there is nothing to find. Phantom overwrites deleted data with cryptographic noise. RAM is scrubbed on app close. No SQLite databases. No plaintext logs. No recoverable message fragments. Commercial forensic tools like Cellebrite and GrayKey will find exactly what we want them to find — nothing. Your device is a dead end.</div>
+    </div>
+    <div class="security-card">
+      <div class="security-icon">&#x26A0;</div>
+      <div class="security-title">Zero Trust Architecture</div>
+      <div class="security-detail">Phantom trusts nothing and no one — not the network, not the server, not even the operating system. Every component is sandboxed. Every connection is verified end-to-end. Keys are stored in hardware-backed secure enclaves. There is no single point of failure, no master key, no admin backdoor. The system is designed so that compromising any single component reveals nothing about any other.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FEATURES ========== -->
+<section class="section" id="features">
+  <div class="reveal">
+    <div class="section-label">[ SYSTEM CAPABILITIES ]</div>
+    <div class="section-title">Everything Signal Wishes It Had.</div>
+    <div class="section-subtitle">And Everything Telegram Will Never Have.</div>
+  </div>
+  <div class="features-grid" id="featuresGrid">
+    <div class="feature-card"><span class="feature-icon">&#x1F512;</span><div class="feature-name">End-To-End Encryption</div><div class="feature-desc">Every single message is encrypted using the Phantom Protocol — our proprietary encryption engine built from the ground up. Text, images, voice, video. No exceptions. No backdoors. Mathematically impossible to intercept.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x2205;</span><div class="feature-name">Zero Metadata</div><div class="feature-desc">Most apps encrypt your messages but still log who you talk to, when, and how often. Phantom collects none of it. No contact graphs. No timestamps. No frequency analysis. Your social map is invisible — even to us.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F4E8;</span><div class="feature-name">Sealed Sender</div><div class="feature-desc">Our servers relay encrypted packets without knowing who sent them. The sender's identity is sealed inside the encryption layer — meaning not even our own infrastructure knows the origin of any message passing through it.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x20BF;</span><div class="feature-name">Built-in Bitcoin Wallet</div><div class="feature-desc">A full non-custodial Bitcoin wallet lives inside every Phantom account. Send, receive, and store BTC without ever leaving the app. No third-party wallet apps. No KYC. No bank. Just you and your keys.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x26A1;</span><div class="feature-name">Lightning Network</div><div class="feature-desc">Send Bitcoin to any contact instantly with near-zero fees via the Lightning Network. Micropayments, tips, subscriptions, and commerce — all settled in seconds. The speed of Venmo with the privacy of cash.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F6E1;</span><div class="feature-name">Screenshot Blocked</div><div class="feature-desc">FLAG_SECURE is enforced on every screen in the app, blocking screenshots and screen recordings at the OS level. This also defeats advanced spyware like Pegasus from capturing your screen content in real time.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F6A8;</span><div class="feature-name">Panic Button</div><div class="feature-desc">One tap. Everything gone. The panic button instantly and permanently wipes all messages, keys, wallet data, and account identity from your device. No recovery possible. For moments when deletion is not optional.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F510;</span><div class="feature-name">Duress PIN</div><div class="feature-desc">Enter your duress PIN instead of your real one, and Phantom opens a convincing decoy app with fake conversations and an empty wallet. Anyone forcing you to unlock your phone will see exactly what you want them to see.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x23F3;</span><div class="feature-name">Disappearing Messages</div><div class="feature-desc">Set messages to self-destruct after 5 seconds, 1 hour, 24 hours, or 7 days. Once the timer expires, messages are wiped from both devices with zero recoverable trace. Not archived. Not hidden. Destroyed.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F47B;</span><div class="feature-name">Anonymous Accounts</div><div class="feature-desc">Create your account with a 12-word seed phrase and nothing else. No phone number. No email. No government name. Your identity is a cryptographic key pair — portable, anonymous, and entirely under your control.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F4DE;</span><div class="feature-name">Encrypted Calls</div><div class="feature-desc">Crystal-clear voice and video calls encrypted end-to-end with the Phantom Protocol. No call logs stored on our servers. No metadata about who called whom. Just a direct, private line between two people.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F465;</span><div class="feature-name">Private Groups</div><div class="feature-desc">Create fully encrypted group conversations with up to 1,000 members. Every message, image, and file is encrypted for every participant individually. Group admins control access. No one outside the group — including us — can see a thing.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F3EA;</span><div class="feature-name">Storefronts</div><div class="feature-desc">Launch a private storefront inside any encrypted channel. List products or services, accept Bitcoin payments, and manage orders — all within Phantom. Run your entire business without ever exposing your identity or your customers'.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x1F9F9;</span><div class="feature-name">Anti-Forensics Mode</div><div class="feature-desc">When enabled, Phantom overwrites deleted data with cryptographic noise, disables swap files, and prevents any forensic tool from recovering message fragments — even from a physically seized device with full disk access.</div></div>
+    <div class="feature-card"><span class="feature-icon">&#x2601;</span><div class="feature-name">No iCloud Backup</div><div class="feature-desc">Phantom is excluded from iCloud and Google Drive backups entirely. Your messages never touch Apple or Google servers. No cloud copies. No accidental syncs. What lives on your device stays on your device — nowhere else.</div></div>
+  </div>
+</section>
+
+<!-- ========== COMPARISON ========== -->
+<section class="section" id="comparison">
+  <div class="reveal">
+    <div class="section-label">[ THREAT ASSESSMENT ]</div>
+    <div class="section-title">How Do You Compare?</div>
+    <div class="section-subtitle">We ran the numbers.</div>
+  </div>
+  <div class="comparison-wrapper reveal">
+    <table class="comparison-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Signal</th>
+          <th>Telegram</th>
+          <th class="phantom-col">PHANTOM</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>E2EE By Default</td><td><span class="check">&#x2713;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Sealed Sender</td><td><span class="check">&#x2713;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Anonymous Account</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Seed Phrase Login</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Screenshot Blocked</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Pegasus Protection</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Panic Button</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Duress PIN</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>iCloud Protected</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Zero IP Logging</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Bitcoin Wallet</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Lightning Network</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Paid Groups</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Anti-Forensics</td><td><span class="cross">&#x2717;</span></td><td><span class="cross">&#x2717;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+        <tr><td>Outside US Servers</td><td><span class="cross">&#x2717;</span></td><td><span class="check">&#x2713;</span></td><td class="phantom-col"><span class="check">&#x2713;</span></td></tr>
+      </tbody>
+    </table>
+    <div class="comparison-result">PHANTOM MESSENGER WINS: 15/15 CATEGORIES</div>
+  </div>
+</section>
+
+<!-- ========== PRICING ========== -->
+<section class="section" id="pricing">
+  <div class="reveal">
+    <div class="section-label">[ SELECT YOUR PLAN ]</div>
+    <div class="section-title">Full Privacy Comes Standard. Pick Your Features.</div>
+  </div>
+  <div class="pricing-grid reveal">
+    <!-- FREE -->
+    <div class="pricing-card free">
+      <div class="pricing-label">[ FREE ]</div>
+      <div class="pricing-price">$0</div>
+      <ul class="pricing-features">
+        <li>5 contacts maximum</li>
+        <li>50 messages per day combined</li>
+        <li>Photo and video sharing</li>
+        <li>Basic E2EE messaging</li>
+        <li>All features visible — upgrade to unlock</li>
+      </ul>
+      <a href="#waitlist" class="pricing-btn">[ DOWNLOAD FREE ]</a>
+    </div>
+    <!-- ESSENTIAL -->
+    <div class="pricing-card essential">
+      <div class="pricing-label">[ ESSENTIAL ]</div>
+      <div class="pricing-price">$24.99<small>/mo</small></div>
+      <ul class="pricing-features">
+        <li>50 contacts</li>
+        <li>Unlimited messages</li>
+        <li>Voice and video calls</li>
+        <li>Group chats — 25 members max</li>
+        <li>30 min group calls — unlimited calls</li>
+        <li>Disappearing messages</li>
+        <li>Duress PIN + decoy app</li>
+        <li>Bitcoin wallet + Lightning</li>
+        <li>2 Storefronts — 25 listings each</li>
+        <li>Panic button</li>
+      </ul>
+      <a href="#waitlist" class="pricing-btn">[ GET ESSENTIAL ]</a>
+    </div>
+    <!-- PRO -->
+    <div class="pricing-card pro">
+      <div class="pricing-badge">MAXIMUM PRIVACY</div>
+      <div class="pricing-label">[ PHANTOM PRO ]</div>
+      <div class="pricing-price">$149.99<small>/mo</small></div>
+      <ul class="pricing-features">
+        <li>Unlimited contacts</li>
+        <li>Unlimited messages</li>
+        <li>Unlimited group members</li>
+        <li>Unlimited group call participants</li>
+        <li>No call time limits</li>
+        <li>Unlimited Storefronts and listings</li>
+        <li>Paid group and Storefront monetization</li>
+        <li>Scheduled messages</li>
+        <li>5 linked devices</li>
+        <li>Priority support — 4 hour response</li>
+        <li>Every security feature unlocked</li>
+        <li>Early access to new features</li>
+      </ul>
+      <a href="#waitlist" class="pricing-btn">[ GO PRO ]</a>
+    </div>
+  </div>
+  <div class="pricing-note reveal">Every plan gets the same Phantom Protocol encryption. Every plan gets zero metadata. Every plan is fully private. The only difference is features — not security.</div>
+</section>
+
+<!-- ========== HOW IT WORKS ========== -->
+<section class="section" id="how-it-works">
+  <div class="reveal">
+    <div class="section-label">[ PROTOCOL SEQUENCE ]</div>
+    <div class="section-title">How Phantom Protects You</div>
+  </div>
+  <div class="steps">
+    <div class="step">
+      <div class="step-number">01</div>
+      <div class="step-title">Create Your Identity</div>
+      <div class="step-desc">Choose your account method. Maximum privacy users get a 12-word seed phrase — no email, no phone, no real name. You are your phrase. Nothing else.</div>
+    </div>
+    <div class="step">
+      <div class="step-number">02</div>
+      <div class="step-title">Keys Never Leave Your Device</div>
+      <div class="step-desc">Your encryption keys are generated on your device and stored in hardware. They never touch our servers. Ever. We have nothing to hand over even if forced.</div>
+    </div>
+    <div class="step">
+      <div class="step-number">03</div>
+      <div class="step-title">Communicate In The Void</div>
+      <div class="step-desc">Messages encrypt on your device. Travel as unreadable ciphertext. Decrypt only on your recipient's device. Server sees nothing. Logs nothing. Stores nothing.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== BITCOIN ECONOMY ========== -->
+<section class="section" id="bitcoin">
+  <div class="reveal">
+    <div class="section-label">[ FINANCIAL PROTOCOL ]</div>
+    <div class="section-title">Your Messages And Your Money. Private.</div>
+  </div>
+  <div class="bitcoin-section reveal">
+    <div class="bitcoin-text">
+      <h3>The First Messenger With A Built-In Economy</h3>
+      <ul class="bitcoin-points">
+        <li>Send Bitcoin to anyone in your contacts</li>
+        <li>Two-party escrow — both sides confirm receipt</li>
+        <li>Lightning Network for instant near-zero fee payments</li>
+        <li>Earn Bitcoin from paid groups and Storefronts</li>
+        <li>Renew your subscription with earned Bitcoin</li>
+        <li>Zero fee on subscription renewals</li>
+        <li>Link your external Bitcoin wallet</li>
+        <li>Anonymous — no KYC, no identity required</li>
+      </ul>
+      <div class="bitcoin-fees">[ TRANSACTION FEES: 3% P2P &middot; 3.5% COMMERCE &middot; 0% RENEWALS ]</div>
+    </div>
+    <div class="bitcoin-visual">
+      <canvas id="particle-canvas"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ========== WAITLIST ========== -->
+<section class="waitlist" id="waitlist">
+  <div class="waitlist-content">
+    <div class="section-label">[ TRANSMISSION INCOMING ]</div>
+    <div class="waitlist-title">BE FIRST.<br>BE PRIVATE.</div>
+    <div class="waitlist-subtitle">Join the waitlist. Get your first month free.</div>
+    <div class="waitlist-note">No spam. No tracking. Just a single email when Phantom Messenger launches.</div>
+    <form class="waitlist-form" id="waitlistForm">
+      <input type="text" class="waitlist-input" name="name" placeholder="YOUR NAME" required>
+      <input type="email" class="waitlist-input" name="email" placeholder="YOUR EMAIL" required>
+      <button type="submit" class="waitlist-submit">[ TRANSMIT ]</button>
+    </form>
+    <div class="waitlist-disclaimer">We do not sell your email. We do not share your email.<br>We barely want to know your email. That is kind of the whole point.</div>
+    <div class="waitlist-success" id="waitlistSuccess">
+      &gt; TRANSMISSION RECEIVED<br>
+      &gt; IDENTITY LOGGED: ANONYMOUS<br>
+      &gt; STATUS: FIRST ACCESS GRANTED<br>
+      &gt; WELCOME TO PHANTOM<span class="terminal-cursor"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ========== FOOTER ========== -->
+<footer class="footer">
+  <div class="footer-grid">
+    <div>
+      <div class="footer-brand">PHANTOM MESSENGER</div>
+      <div class="footer-tagline">Private by architecture. Not by promise.</div>
+      <div class="footer-copy">&copy; 2025 Phantom Messenger LLC</div>
+    </div>
+    <div>
+      <div class="footer-heading">NAVIGATION</div>
+      <ul class="footer-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#why-phantom">Why Phantom</a></li>
+        <li><a href="#waitlist">Early Access</a></li>
+        <li><a href="#">Privacy Policy</a></li>
+        <li><a href="#">Terms of Service</a></li>
+      </ul>
+    </div>
+    <div>
+      <div class="footer-heading">CONNECT</div>
+      <div class="footer-social">
+        <a href="#" aria-label="X / Twitter"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+        <a href="#" aria-label="Instagram"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1.5" fill="currentColor" stroke="none"/></svg></a>
+      </div>
+      <a href="mailto:contact@phantommessenger.app" class="footer-email">contact@phantommessenger.app</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <div class="footer-ticker">
+      <span>[ ENCRYPTED ]</span><span>&middot;</span>
+      <span>[ ANONYMOUS ]</span><span>&middot;</span>
+      <span>[ UNSTOPPABLE ]</span><span>&middot;</span>
+      <span>[ ZERO METADATA ]</span><span>&middot;</span>
+      <span>[ ZERO COMPROMISE ]</span><span>&middot;</span>
+      <span>[ PRIVATE BY ARCHITECTURE ]</span><span>&middot;</span>
+      <span>[ ENCRYPTED ]</span><span>&middot;</span>
+      <span>[ ANONYMOUS ]</span><span>&middot;</span>
+      <span>[ UNSTOPPABLE ]</span><span>&middot;</span>
+      <span>[ ZERO METADATA ]</span><span>&middot;</span>
+      <span>[ ZERO COMPROMISE ]</span><span>&middot;</span>
+      <span>[ PRIVATE BY ARCHITECTURE ]</span><span>&middot;</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// ========== PARTICLE NETWORK (Bitcoin section) ==========
+(function() {
+  const canvas = document.getElementById('particle-canvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, particles = [];
+  const count = 50;
+
+  function resize() {
+    w = canvas.width = canvas.offsetWidth;
+    h = canvas.height = canvas.offsetHeight;
+  }
+
+  class Particle {
+    constructor() {
+      this.x = Math.random() * w;
+      this.y = Math.random() * h;
+      this.vx = (Math.random() - 0.5) * 0.8;
+      this.vy = (Math.random() - 0.5) * 0.8;
+      this.r = Math.random() * 2 + 1;
+      this.pulse = Math.random() * Math.PI * 2;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      this.pulse += 0.02;
+      if (this.x < 0 || this.x > w) this.vx *= -1;
+      if (this.y < 0 || this.y > h) this.vy *= -1;
+    }
+    draw() {
+      const alpha = 0.3 + Math.sin(this.pulse) * 0.2;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0, 255, 65, ${alpha})`;
+      ctx.fill();
+    }
+  }
+
+  function init() {
+    particles = [];
+    for (let i = 0; i < count; i++) particles.push(new Particle());
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => { p.update(); p.draw(); });
+
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const dx = particles[i].x - particles[j].x;
+        const dy = particles[i].y - particles[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+          ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y);
+          ctx.lineTo(particles[j].x, particles[j].y);
+          ctx.strokeStyle = `rgba(0, 255, 65, ${0.15 * (1 - dist / 150)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+
+  resize();
+  window.addEventListener('resize', () => { resize(); init(); });
+  init();
+  animate();
+})();
+
+// ========== TYPING EFFECT ==========
+(function() {
+  const text = 'Private by architecture. Not by promise.';
+  const el = document.getElementById('heroTagline');
+  let i = 0;
+
+  function type() {
+    if (i <= text.length) {
+      el.innerHTML = text.substring(0, i) + '<span class="typed-cursor"></span>';
+      i++;
+      setTimeout(type, 60 + Math.random() * 40);
+    }
+  }
+
+  setTimeout(type, 1500);
+})();
+
+// ========== TERMINAL TYPING ==========
+(function() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const lines = entry.target.querySelectorAll('.line');
+        lines.forEach((line, i) => {
+          setTimeout(() => line.classList.add('visible'), i * 300);
+        });
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  const terminal = document.getElementById('terminalBody');
+  if (terminal) observer.observe(terminal);
+})();
+
+// ========== SCROLL REVEAL ==========
+(function() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+  document.querySelectorAll('.reveal, .feature-card, .security-card, .step').forEach(el => observer.observe(el));
+})();
+
+// ========== MOBILE NAV ==========
+document.getElementById('navToggle').addEventListener('click', () => {
+  document.getElementById('navLinks').classList.toggle('open');
+});
+
+// Close nav on link click
+document.querySelectorAll('.nav-links a').forEach(a => {
+  a.addEventListener('click', () => {
+    document.getElementById('navLinks').classList.remove('open');
+  });
+});
+
+// ========== FORM ==========
+document.getElementById('waitlistForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+  this.style.display = 'none';
+  document.querySelector('.waitlist-disclaimer').style.display = 'none';
+  document.getElementById('waitlistSuccess').style.display = 'block';
+});
+</script>
+</body>
+</html>
