@@ -113,12 +113,13 @@ export function ChatProvider({ children }) {
             setConversations((prev) => {
               const existing = prev.find((c) => c.id === convId);
               const preview = plaintext.length > 50 ? plaintext.slice(0, 50) + '...' : plaintext;
+              const senderName = msg.senderUsername || existing?.username || existing?.name;
               if (existing) {
                 return prev.map((c) =>
-                  c.id === convId ? { ...c, lastMessage: preview, lastMessageAt: msg.createdAt, unread: (c.unread || 0) + 1 } : c
+                  c.id === convId ? { ...c, lastMessage: preview, lastMessageAt: msg.createdAt, unread: (c.unread || 0) + 1, username: c.username || senderName, name: c.name || senderName } : c
                 );
               }
-              return [{ id: convId, senderId: msg.senderId, lastMessage: preview, lastMessageAt: msg.createdAt, unread: 1 }, ...prev];
+              return [{ id: convId, senderId: msg.senderId, username: senderName, name: senderName, lastMessage: preview, lastMessageAt: msg.createdAt, unread: 1 }, ...prev];
             });
 
             // Acknowledge receipt
