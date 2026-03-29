@@ -62,14 +62,26 @@ export default function Login() {
       // Look up user by BTC address — try server first, then local mapping
       let foundUsername = null;
 
-      // Check local address mapping
+      // Check local address mapping first (fast path)
       const addrMap = JSON.parse(localStorage.getItem('phantom_addr_map') || '{}');
       if (addrMap[wallet.address]) {
         foundUsername = addrMap[wallet.address];
       }
 
+      // If not found locally, try server lookup (cross-device recovery)
       if (!foundUsername) {
-        // Try to find via server lookup — iterate through possible matches
+        try {
+          const lookupRes = await authApi.lookupByAddress(wallet.address);
+          if (lookupRes.success && lookupRes.data?.username) {
+            foundUsername = lookupRes.data.username;
+            // Cache locally for next time
+            addrMap[wallet.address] = foundUsername;
+            localStorage.setItem('phantom_addr_map', JSON.stringify(addrMap));
+          }
+        } catch {}
+      }
+
+      if (!foundUsername) {
         setError('No account found with this recovery phrase. Make sure you entered the correct words.');
         setLoading(false);
         return;

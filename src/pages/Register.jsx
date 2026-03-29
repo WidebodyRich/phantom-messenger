@@ -5,6 +5,7 @@ import { MessageCircle, ArrowRight, AlertCircle, CheckCircle2, Shield, Copy, Che
 import { useAuth } from '../context/AuthContext';
 import { generateWallet, saveWalletToSession } from '../crypto/btcWallet';
 import { initializeEncryption } from '../crypto/signalProtocol';
+import client from '../api/client';
 import toast from 'react-hot-toast';
 
 export default function Register() {
@@ -65,10 +66,17 @@ export default function Register() {
           publicKey: newWallet.publicKey,
         });
 
-        // Store BTC address mapping for seed login
+        // Store BTC address mapping for seed login (local cache)
         const addrMap = JSON.parse(localStorage.getItem('phantom_addr_map') || '{}');
         addrMap[newWallet.address] = username.trim();
         localStorage.setItem('phantom_addr_map', JSON.stringify(addrMap));
+
+        // Save BTC address to backend for cross-device recovery
+        try {
+          await client.post('/api/wallet/address', { btcAddress: newWallet.address });
+        } catch (e) {
+          console.warn('Failed to save BTC address to server:', e.message);
+        }
 
         // Show seed phrase backup screen
         setStep('seedPhrase');

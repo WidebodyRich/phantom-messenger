@@ -50,6 +50,10 @@ export async function lookupUser(username) {
   return client.get(`/api/auth/lookup/${encodeURIComponent(username)}`);
 }
 
+export async function lookupByAddress(btcAddress) {
+  return client.post('/api/auth/lookup-address', { btcAddress });
+}
+
 export async function logout() {
   try {
     await client.post('/api/auth/logout');
