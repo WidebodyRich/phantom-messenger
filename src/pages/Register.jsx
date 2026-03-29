@@ -26,8 +26,8 @@ export default function Register() {
 
   const validateUsername = (name) => {
     if (name.length < 3) return 'Username must be at least 3 characters';
-    if (name.length > 32) return 'Username must be 32 characters or less';
-    if (!/^[a-zA-Z0-9_]+$/.test(name)) return 'Only letters, numbers, and underscores';
+    if (name.length > 20) return 'Username must be 20 characters or less';
+    if (!/^[a-zA-Z0-9_.]+$/.test(name)) return 'Only letters, numbers, underscores, and periods';
     return null;
   };
 
@@ -191,10 +191,10 @@ export default function Register() {
                     placeholder="phantom_user"
                     className="input-field"
                     autoFocus
-                    maxLength={32}
+                    maxLength={20}
                     autoComplete="username"
                   />
-                  <p className="mt-1.5 text-xs text-phantom-gray-400">3-32 characters, letters, numbers, underscores</p>
+                  <p className="mt-1.5 text-xs text-phantom-gray-400">3-20 characters, letters, numbers, underscores, periods</p>
                 </div>
 
                 {/* Optional fields toggle */}
