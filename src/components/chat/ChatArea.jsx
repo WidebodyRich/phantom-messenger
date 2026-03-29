@@ -9,13 +9,23 @@ import TypingIndicator from './TypingIndicator';
 import { formatDateSeparator } from '../../utils/formatters';
 
 export default function ChatArea({ onBack }) {
-  const { activeConversation, messages, sendMessage, markConversationRead } = useChat();
+  const { activeConversation, messages, sendMessage, markConversationRead, loadMessageHistory, loadOlderMessages } = useChat();
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
   const containerRef = useRef(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const conversationMessages = messages[activeConversation?.id] || [];
+
+  // Load message history when conversation opens
+  useEffect(() => {
+    if (activeConversation?.id) {
+      loadMessageHistory(activeConversation.id);
+      setHasMore(true);
+    }
+  }, [activeConversation?.id, loadMessageHistory]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -28,10 +38,23 @@ export default function ChatArea({ onBack }) {
     }
   }, [activeConversation?.id, activeConversation?.unread, markConversationRead]);
 
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore || !activeConversation?.id) return;
+    setLoadingMore(true);
+    try {
+      const result = await loadOlderMessages(activeConversation.id);
+      setHasMore(result.hasMore);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const handleScroll = () => {
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     setShowScrollDown(scrollHeight - scrollTop - clientHeight > 100);
+    // Load more when scrolled near top
+    if (scrollTop < 50) handleLoadMore();
   };
 
   const scrollToBottom = () => {
@@ -125,6 +148,11 @@ export default function ChatArea({ onBack }) {
           </div>
         ) : (
           <>
+            {loadingMore && (
+              <div className="flex justify-center py-2">
+                <div className="w-5 h-5 border-2 border-phantom-green/30 border-t-phantom-green rounded-full animate-spin" />
+              </div>
+            )}
             {renderMessages}
             <div ref={messagesEndRef} />
           </>

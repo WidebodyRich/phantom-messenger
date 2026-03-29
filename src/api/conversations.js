@@ -5,17 +5,17 @@ export async function getConversations() {
 }
 
 export async function deleteConversation(peerId) {
-  return client.post('/api/conversations/delete', { peerId });
+  return client.delete(`/api/conversations/${peerId}`);
 }
 
-export async function pinConversation(peerId, isPinned) {
-  return client.post('/api/conversations/pin', { peerId, isPinned });
+export async function pinConversation(peerId) {
+  return client.post(`/api/conversations/${peerId}/pin`);
 }
 
-export async function muteConversation(peerId, isMuted) {
-  return client.post('/api/conversations/mute', { peerId, isMuted });
+export async function muteConversation(peerId) {
+  return client.post(`/api/conversations/${peerId}/mute`);
 }
 
 export async function markConversationRead(peerId) {
-  return client.post('/api/conversations/read', { peerId });
+  return client.post(`/api/conversations/${peerId}/read`);
 }

@@ -87,29 +87,67 @@ export function ChatProvider({ children }) {
     }
   }, []);
 
-  // Pin/unpin conversation
-  const pinConversation = useCallback(async (peerId, isPinned) => {
+  // Pin/unpin conversation (toggle on server)
+  const pinConversation = useCallback(async (peerId) => {
     setConversations((prev) =>
-      prev.map((c) => (c.id === peerId ? { ...c, isPinned } : c))
+      prev.map((c) => (c.id === peerId ? { ...c, isPinned: !c.isPinned } : c))
     );
     try {
-      await conversationsApi.pinConversation(peerId, isPinned);
+      await conversationsApi.pinConversation(peerId);
     } catch (err) {
       console.error('[Chat] Pin error:', err?.message || err);
     }
   }, []);
 
-  // Mute/unmute conversation
-  const muteConversation = useCallback(async (peerId, isMuted) => {
+  // Mute/unmute conversation (toggle on server)
+  const muteConversation = useCallback(async (peerId) => {
     setConversations((prev) =>
-      prev.map((c) => (c.id === peerId ? { ...c, isMuted } : c))
+      prev.map((c) => (c.id === peerId ? { ...c, isMuted: !c.isMuted } : c))
     );
     try {
-      await conversationsApi.muteConversation(peerId, isMuted);
+      await conversationsApi.muteConversation(peerId);
     } catch (err) {
       console.error('[Chat] Mute error:', err?.message || err);
     }
   }, []);
+
+  // Load message history for a conversation
+  const loadMessageHistory = useCallback(async (peerId) => {
+    // Don't reload if we already have messages
+    if (messages[peerId]?.length > 0) return;
+    try {
+      const res = await messagesApi.getMessageHistory(peerId);
+      if (res.success && res.data?.messages) {
+        setMessages((prev) => ({
+          ...prev,
+          [peerId]: res.data.messages,
+        }));
+      }
+    } catch (err) {
+      console.error('[Chat] Load history error:', err?.message || err);
+    }
+  }, [messages]);
+
+  // Load older messages (pagination)
+  const loadOlderMessages = useCallback(async (peerId) => {
+    const convMessages = messages[peerId] || [];
+    if (convMessages.length === 0) return { hasMore: false };
+    const oldestId = convMessages[0].id;
+    try {
+      const res = await messagesApi.getMessageHistory(peerId, { before: oldestId });
+      if (res.success && res.data?.messages?.length > 0) {
+        setMessages((prev) => ({
+          ...prev,
+          [peerId]: [...res.data.messages, ...(prev[peerId] || [])],
+        }));
+        return { hasMore: res.data.hasMore };
+      }
+      return { hasMore: false };
+    } catch (err) {
+      console.error('[Chat] Load older messages error:', err?.message || err);
+      return { hasMore: false };
+    }
+  }, [messages]);
 
   // Check and replenish pre-keys
   const checkPreKeys = useCallback(async () => {
@@ -293,7 +331,7 @@ export function ChatProvider({ children }) {
         [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false } : m)),
       }));
     } catch (err) {
-      console.error('[Chat] Send message failed:', err?.message || err);
+      console.error('[Chat] Send message failed:', err?.message || err, 'Status:', err?.status, 'Full:', JSON.stringify(err));
       setMessages((prev) => ({
         ...prev,
         [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, failed: true } : m)),
@@ -310,6 +348,7 @@ export function ChatProvider({ children }) {
       sendMessage, fetchPending, fetchConversations,
       deleteConversation, markConversationRead,
       pinConversation, muteConversation,
+      loadMessageHistory, loadOlderMessages,
       typingUsers,
     }}>
       {children}

@@ -11,3 +11,9 @@ export async function getPendingMessages() {
 export async function acknowledgeMessage(messageId) {
   return client.post('/api/messages/ack', { messageId });
 }
+
+export async function getMessageHistory(peerId, { limit = 50, before } = {}) {
+  const params = new URLSearchParams({ limit });
+  if (before) params.append('before', before);
+  return client.get(`/api/messages/history/${peerId}?${params}`);
+}

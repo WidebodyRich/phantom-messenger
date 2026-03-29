@@ -24,13 +24,13 @@ export default function ConversationItem({ conversation, active, onClick }) {
   const handlePin = (e) => {
     e.stopPropagation();
     setShowMenu(false);
-    pinConversation(conversation.id, !isPinned);
+    pinConversation(conversation.id);
   };
 
   const handleMute = (e) => {
     e.stopPropagation();
     setShowMenu(false);
-    muteConversation(conversation.id, !isMuted);
+    muteConversation(conversation.id);
   };
 
   return (
