@@ -7,6 +7,8 @@ if (typeof globalThis.process === 'undefined') {
   globalThis.process = { env: {}, browser: true, version: 'v20.0.0' };
 }
 
+console.log('[Phantom] Build v2.1.0 — plaintext messaging');
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

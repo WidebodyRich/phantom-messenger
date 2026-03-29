@@ -92,10 +92,12 @@ export function ChatProvider({ children }) {
       if (res.success && Array.isArray(res.data)) {
         const newMsgs = res.data;
         if (newMsgs.length > 0) {
+          console.log('[Chat] Received', newMsgs.length, 'pending messages:', JSON.stringify(newMsgs.map(m => ({ id: m.id, senderId: m.senderId, ciphertext: m.ciphertext?.substring(0, 60), messageType: m.messageType }))));
           for (const msg of newMsgs) {
             const convId = msg.senderId;
-            // Decrypt the message
+            // Process the message
             const plaintext = await decryptReceivedMessage(msg);
+            console.log('[Chat] Message processed:', { id: msg.id, rawCiphertext: msg.ciphertext?.substring(0, 60), plaintext: plaintext?.substring(0, 60) });
 
             const processedMsg = {
               ...msg,
