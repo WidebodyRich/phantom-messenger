@@ -1,31 +1,40 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
-import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 
 export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait()],
+  plugins: [
+    react(),
+    wasm(),
+    topLevelAwait(),
+    nodePolyfills({
+      include: ['buffer', 'process', 'stream', 'crypto', 'events'],
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      buffer: 'buffer',
     },
   },
   define: {
-    'process.env': {},
-    'process.browser': true,
-    'process.version': JSON.stringify(''),
     global: 'globalThis',
   },
   optimizeDeps: {
-    esbuildOptions: {
-      define: { global: 'globalThis' },
-      plugins: [NodeGlobalsPolyfillPlugin({ buffer: true })],
-    },
     include: ['buffer', 'bitcoinjs-lib', 'bip39', 'bip32', 'tiny-secp256k1', 'ecpair'],
     exclude: ['tiny-secp256k1'],
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
   },
   server: {
     port: 5173,

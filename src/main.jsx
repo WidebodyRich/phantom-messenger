@@ -1,8 +1,11 @@
+// Buffer/process polyfills are injected by vite-plugin-node-polyfills
 import { Buffer } from 'buffer';
-
-// Polyfill Node.js globals BEFORE any other imports
 globalThis.Buffer = Buffer;
-globalThis.process = globalThis.process || { env: {}, browser: true, version: '' };
+window.Buffer = Buffer;
+
+if (typeof globalThis.process === 'undefined') {
+  globalThis.process = { env: {}, browser: true, version: 'v20.0.0' };
+}
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
