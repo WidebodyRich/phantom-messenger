@@ -224,13 +224,24 @@ export default function Settings({ onBack }) {
 
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
         {/* User card */}
-        <div className="flex items-center gap-4 p-4 bg-phantom-gray-50 rounded-2xl">
-          <div className="w-14 h-14 bg-phantom-green/10 rounded-full flex items-center justify-center">
-            <span className="text-phantom-green font-bold text-xl">{(user?.username || '?')[0].toUpperCase()}</span>
+        <div className={`flex items-center gap-4 p-4 rounded-2xl ${user?.role === 'owner' ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200/50' : 'bg-phantom-gray-50'}`}>
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center ${user?.role === 'owner' ? 'bg-gradient-to-br from-amber-400 to-yellow-500' : 'bg-phantom-green/10'}`}>
+            <span className={`font-bold text-xl ${user?.role === 'owner' ? 'text-white' : 'text-phantom-green'}`}>{(user?.username || '?')[0].toUpperCase()}</span>
           </div>
           <div>
-            <p className="font-bold text-phantom-charcoal">{user?.username}</p>
-            <p className="text-sm text-phantom-gray-400 capitalize">{user?.tier || 'Free'} Plan</p>
+            <div className="flex items-center gap-2">
+              <p className="font-bold text-phantom-charcoal">{user?.username}</p>
+              {user?.role === 'owner' && (
+                <span className="bg-gradient-to-r from-amber-400 to-yellow-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Owner</span>
+              )}
+              {user?.role === 'admin' && (
+                <span className="bg-purple-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Admin</span>
+              )}
+            </div>
+            <p className="text-sm text-phantom-gray-400">
+              {user?.tier === 'phantom_elite' ? 'Phantom Elite' : `${(user?.tier || 'Free').charAt(0).toUpperCase()}${(user?.tier || 'free').slice(1)}`} Plan
+              {user?.isExemptFromBilling && <span className="ml-1.5 text-emerald-500 text-xs font-medium">(Complimentary)</span>}
+            </p>
             <p className="text-xs text-phantom-gray-300 mt-0.5">
               Auth: {profile?.authMethod || user?.authMethod || 'seed'}
             </p>
