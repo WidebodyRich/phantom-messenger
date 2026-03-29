@@ -1,29 +1,33 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, ArrowDownLeft, Bitcoin, RefreshCw, Copy, ExternalLink } from 'lucide-react';
-import { getBTCPriceUSD, getAddressBalance, getAddressTransactions } from '../../api/wallet';
+import { ArrowUpRight, ArrowDownLeft, Bitcoin, RefreshCw, ExternalLink, Coins } from 'lucide-react';
+import { getBalance, getTransactions, getBtcPrice, getAddressUrl, getTxUrl } from '../../api/bitcoin';
 import { formatBTC, formatUSD, truncateAddress } from '../../utils/formatters';
+import { loadWalletFromSession } from '../../crypto/btcWallet';
 import SendBTC from './SendBTC';
 import ReceiveBTC from './ReceiveBTC';
-import toast from 'react-hot-toast';
 
-export default function WalletView({ address, onClose }) {
-  const [balance, setBalance] = useState(0);
+export default function WalletView({ onClose }) {
+  const [wallet] = useState(() => loadWalletFromSession());
+  const [balance, setBalance] = useState({ confirmed: 0, unconfirmed: 0, total: 0, btc: 0 });
   const [btcPrice, setBtcPrice] = useState(0);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [view, setView] = useState('main'); // main, send, receive
 
+  const address = wallet?.address;
+
   const fetchData = useCallback(async () => {
+    if (!address) { setLoading(false); return; }
     try {
       const [bal, price, txs] = await Promise.all([
-        address ? getAddressBalance(address).catch(() => ({ confirmed: 0 })) : { confirmed: 0 },
-        getBTCPriceUSD(),
-        address ? getAddressTransactions(address).catch(() => []) : [],
+        getBalance(address).catch(() => ({ confirmed: 0, unconfirmed: 0, total: 0, btc: 0 })),
+        getBtcPrice().catch(() => 0),
+        getTransactions(address).catch(() => []),
       ]);
-      setBalance(bal.confirmed || 0);
-      setBtcPrice(price);
+      setBalance(bal);
+      setBtcPrice(price || 0);
       setTransactions(txs.slice(0, 20));
     } catch (err) {
       console.error('Wallet fetch error:', err);
@@ -39,11 +43,14 @@ export default function WalletView({ address, onClose }) {
     fetchData();
   };
 
-  const btcBalance = balance / 100000000;
-  const usdBalance = btcBalance * btcPrice;
+  const usdBalance = balance.btc * btcPrice;
 
-  if (view === 'send') return <SendBTC address={address} balance={balance} btcPrice={btcPrice} onBack={() => setView('main')} />;
-  if (view === 'receive') return <ReceiveBTC address={address} onBack={() => setView('main')} />;
+  if (view === 'send') {
+    return <SendBTC wallet={wallet} balance={balance} btcPrice={btcPrice} onBack={() => { setView('main'); fetchData(); }} />;
+  }
+  if (view === 'receive') {
+    return <ReceiveBTC address={address} onBack={() => setView('main')} />;
+  }
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -60,7 +67,7 @@ export default function WalletView({ address, onClose }) {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-phantom-green to-phantom-green-dark rounded-2xl p-6 text-white mb-6 relative overflow-hidden"
+          className="bg-gradient-to-br from-phantom-green to-emerald-700 rounded-2xl p-6 text-white mb-6 relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8" />
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full translate-y-6 -translate-x-6" />
@@ -74,15 +81,20 @@ export default function WalletView({ address, onClose }) {
               <div className="h-10 w-48 bg-white/20 rounded-xl animate-pulse mt-2" />
             ) : (
               <>
-                <p className="text-3xl font-bold mt-2">{btcBalance.toFixed(8)} BTC</p>
-                <p className="text-white/70 text-sm mt-1">{formatUSD(usdBalance)}</p>
+                <p className="text-3xl font-bold mt-2">{balance.btc.toFixed(8)} BTC</p>
+                {btcPrice > 0 && <p className="text-white/70 text-sm mt-1">{formatUSD(usdBalance)}</p>}
+                {balance.unconfirmed > 0 && (
+                  <p className="text-white/50 text-xs mt-1">
+                    +{(balance.unconfirmed / 100000000).toFixed(8)} BTC unconfirmed
+                  </p>
+                )}
               </>
             )}
           </div>
         </motion.div>
 
         {/* Actions */}
-        <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="grid grid-cols-3 gap-3 mb-6">
           <button onClick={() => setView('send')} className="bg-phantom-gray-50 hover:bg-phantom-gray-100 rounded-2xl p-4 flex flex-col items-center gap-2 transition-all active:scale-[0.97]">
             <div className="w-11 h-11 bg-phantom-green/10 rounded-full flex items-center justify-center">
               <ArrowUpRight className="w-5 h-5 text-phantom-green" />
@@ -95,35 +107,84 @@ export default function WalletView({ address, onClose }) {
             </div>
             <span className="text-sm font-semibold text-phantom-charcoal">Receive</span>
           </button>
+          <a
+            href="https://coinfaucet.eu/en/btc-testnet/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-phantom-gray-50 hover:bg-phantom-gray-100 rounded-2xl p-4 flex flex-col items-center gap-2 transition-all active:scale-[0.97]"
+          >
+            <div className="w-11 h-11 bg-amber-50 rounded-full flex items-center justify-center">
+              <Coins className="w-5 h-5 text-amber-500" />
+            </div>
+            <span className="text-sm font-semibold text-phantom-charcoal">Faucet</span>
+          </a>
         </div>
+
+        {/* Address */}
+        {address && (
+          <a
+            href={getAddressUrl(address)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 bg-phantom-gray-50 rounded-xl p-3 mb-6 hover:bg-phantom-gray-100 transition-colors"
+          >
+            <span className="text-xs font-mono text-phantom-gray-500 truncate flex-1">{address}</span>
+            <ExternalLink className="w-3.5 h-3.5 text-phantom-gray-400 flex-shrink-0" />
+          </a>
+        )}
 
         {/* Transactions */}
         <h3 className="text-sm font-semibold text-phantom-charcoal mb-3">Recent Transactions</h3>
         {loading ? (
           <div className="space-y-3">
-            {[1,2,3].map(i => <div key={i} className="h-16 skeleton" />)}
+            {[1,2,3].map(i => <div key={i} className="h-16 skeleton rounded-xl" />)}
           </div>
         ) : transactions.length === 0 ? (
           <div className="text-center py-8">
             <Bitcoin className="w-10 h-10 text-phantom-gray-200 mx-auto mb-2" />
             <p className="text-phantom-gray-400 text-sm">No transactions yet</p>
-            <p className="text-phantom-gray-300 text-xs mt-1">Get some testnet BTC to get started</p>
-            <a
-              href="https://coinfaucet.eu/en/btc-testnet/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-phantom-green text-xs font-semibold mt-3 hover:underline"
-            >
-              Get Test Coins <ExternalLink className="w-3 h-3" />
-            </a>
+            <p className="text-phantom-gray-300 text-xs mt-1">Get testnet BTC from the faucet above</p>
+            <div className="flex flex-col gap-1 mt-3">
+              <a
+                href="https://coinfaucet.eu/en/btc-testnet/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1 text-phantom-green text-xs font-semibold hover:underline"
+              >
+                coinfaucet.eu <ExternalLink className="w-3 h-3" />
+              </a>
+              <a
+                href="https://bitcoinfaucet.uo1.net/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-1 text-phantom-green text-xs font-semibold hover:underline"
+              >
+                bitcoinfaucet.uo1.net <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">
             {transactions.map((tx) => {
-              const isReceived = tx.vout?.some(v => v.scriptpubkey_address === address);
-              const amount = tx.vout?.reduce((sum, v) => v.scriptpubkey_address === address ? sum + v.value : sum, 0) || 0;
+              // Determine if received: check if any output goes to our address
+              const receivedAmount = tx.vout?.reduce(
+                (sum, v) => v.scriptpubkey_address === address ? sum + v.value : sum, 0
+              ) || 0;
+              const sentAmount = tx.vin?.reduce(
+                (sum, inp) => inp.prevout?.scriptpubkey_address === address ? sum + inp.prevout.value : sum, 0
+              ) || 0;
+              const isReceived = receivedAmount > sentAmount;
+              const netAmount = isReceived ? receivedAmount : sentAmount - receivedAmount;
+              const confirmations = tx.status?.confirmed ? (tx.status.block_height ? 'Confirmed' : 'Confirmed') : 'Pending';
+
               return (
-                <div key={tx.txid} className="flex items-center gap-3 p-3 rounded-xl hover:bg-phantom-gray-50 transition-colors">
+                <a
+                  key={tx.txid}
+                  href={getTxUrl(tx.txid)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-phantom-gray-50 transition-colors"
+                >
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center ${isReceived ? 'bg-green-50' : 'bg-red-50'}`}>
                     {isReceived ? <ArrowDownLeft className="w-4 h-4 text-green-500" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
                   </div>
@@ -133,11 +194,11 @@ export default function WalletView({ address, onClose }) {
                   </div>
                   <div className="text-right">
                     <p className={`text-sm font-semibold ${isReceived ? 'text-green-500' : 'text-red-500'}`}>
-                      {isReceived ? '+' : '-'}{formatBTC(amount)}
+                      {isReceived ? '+' : '-'}{formatBTC(netAmount)}
                     </p>
-                    <p className="text-xs text-phantom-gray-400">{tx.status?.confirmed ? 'Confirmed' : 'Pending'}</p>
+                    <p className="text-xs text-phantom-gray-400">{confirmations}</p>
                   </div>
-                </div>
+                </a>
               );
             })}
           </div>

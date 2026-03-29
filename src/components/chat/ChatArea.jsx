@@ -31,9 +31,9 @@ export default function ChatArea({ onBack }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSend = (text) => {
+  const handleSend = (text, messageType) => {
     if (activeConversation?.id) {
-      sendMessage(activeConversation.id, text);
+      sendMessage(activeConversation.id, text, messageType);
     }
   };
 
@@ -135,7 +135,7 @@ export default function ChatArea({ onBack }) {
       </div>
 
       {/* Input */}
-      <MessageInput onSend={handleSend} />
+      <MessageInput onSend={handleSend} recipientAddress={activeConversation?.btcAddress} />
     </div>
   );
 }

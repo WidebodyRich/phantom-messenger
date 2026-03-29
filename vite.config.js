@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
+import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), wasm(), topLevelAwait()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
@@ -17,8 +20,10 @@ export default defineConfig({
   optimizeDeps: {
     esbuildOptions: {
       define: { global: 'globalThis' },
+      plugins: [NodeGlobalsPolyfillPlugin({ buffer: true })],
     },
-    include: ['buffer'],
+    include: ['buffer', 'bitcoinjs-lib', 'bip39', 'bip32', 'tiny-secp256k1', 'ecpair'],
+    exclude: ['tiny-secp256k1'],
   },
   server: {
     port: 5173,

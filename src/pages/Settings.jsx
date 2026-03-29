@@ -1,38 +1,55 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, Bell, Shield, Palette, Info, LogOut, ChevronRight, Lock } from 'lucide-react';
+import { ArrowLeft, User, Bell, Shield, Palette, Info, LogOut, ChevronRight, Lock, Bitcoin, Copy, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { loadWalletFromSession } from '../crypto/btcWallet';
+import { getPreKeyCount } from '../crypto/signalProtocol';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 export default function Settings({ onBack }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [wallet] = useState(() => loadWalletFromSession());
+  const [copied, setCopied] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate('/');
   };
 
+  const handleCopyAddress = () => {
+    if (wallet?.address) {
+      navigator.clipboard.writeText(wallet.address);
+      setCopied(true);
+      toast.success('Address copied!');
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  let preKeyCount = 0;
+  try { preKeyCount = getPreKeyCount(); } catch {}
+
   const sections = [
     {
       title: 'Account',
       items: [
-        { icon: User, label: 'Edit Profile', desc: 'Username, display name, avatar', onClick: () => {} },
-        { icon: Shield, label: 'Privacy', desc: 'Who can message you, blocked users', onClick: () => {} },
-        { icon: Lock, label: 'Security', desc: 'Encryption keys, active sessions', onClick: () => {} },
+        { icon: User, label: 'Profile', desc: `@${user?.username || 'unknown'}`, onClick: () => {} },
+        { icon: Shield, label: 'Privacy', desc: 'End-to-end encrypted messaging', onClick: () => {} },
+        { icon: Lock, label: 'Encryption', desc: `Signal Protocol active — ${preKeyCount} pre-keys remaining`, onClick: () => {} },
       ],
     },
     {
       title: 'Preferences',
       items: [
         { icon: Bell, label: 'Notifications', desc: 'Push notifications, sounds', onClick: () => {} },
-        { icon: Palette, label: 'Appearance', desc: 'Theme, font size', onClick: () => {} },
+        { icon: Palette, label: 'Appearance', desc: 'Light theme', onClick: () => {} },
       ],
     },
     {
       title: 'About',
       items: [
-        { icon: Info, label: 'About Phantom', desc: 'Version 2.0.0 • Helsinki, FI', onClick: () => {} },
+        { icon: Info, label: 'About Phantom', desc: 'Version 2.0.0 — Signal Protocol E2EE', onClick: () => {} },
       ],
     },
   ];
@@ -57,6 +74,23 @@ export default function Settings({ onBack }) {
             <p className="text-sm text-phantom-gray-400 capitalize">{user?.tier || 'Free'} Plan</p>
           </div>
         </div>
+
+        {/* BTC Wallet Card */}
+        {wallet?.address && (
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/50 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Bitcoin className="w-4 h-4 text-amber-500" />
+              <span className="text-sm font-semibold text-phantom-charcoal">Bitcoin Wallet</span>
+              <span className="bg-amber-200/50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto">TESTNET</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-mono text-phantom-gray-500 truncate flex-1">{wallet.address}</p>
+              <button onClick={handleCopyAddress} className="p-1.5 hover:bg-amber-100 rounded-lg transition-colors">
+                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5 text-amber-500" />}
+              </button>
+            </div>
+          </div>
+        )}
 
         {sections.map((section) => (
           <div key={section.title}>

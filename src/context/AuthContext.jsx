@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { setAccessToken, getAccessToken } from '../api/client';
+import { setAccessToken } from '../api/client';
 import * as authApi from '../api/auth';
+import { restoreEncryptionState, clearEncryptionState } from '../crypto/signalProtocol';
+import { clearWalletFromSession } from '../crypto/btcWallet';
 
 const AuthContext = createContext(null);
 
@@ -27,6 +28,8 @@ export function AuthProvider({ children }) {
         try {
           await authApi.refreshAccessToken();
           await fetchUser();
+          // Restore Signal Protocol state
+          await restoreEncryptionState();
         } catch {
           sessionStorage.removeItem('phantom_refresh');
         }
@@ -53,8 +56,10 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    await authApi.logout();
+    try { await authApi.logout(); } catch {}
     setUser(null);
+    clearEncryptionState();
+    clearWalletFromSession();
   };
 
   return (

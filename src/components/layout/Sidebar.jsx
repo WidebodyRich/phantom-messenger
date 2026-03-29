@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import ConversationItem from '../chat/ConversationItem';
 import NewChatModal from '../chat/NewChatModal';
+import WalletView from '../wallet/WalletView';
 import { useNavigate } from 'react-router-dom';
 
 export default function Sidebar() {
@@ -120,11 +121,7 @@ export default function Sidebar() {
           </div>
         )}
         {tab === 'wallet' && (
-          <div className="text-center py-12">
-            <Bitcoin className="w-12 h-12 text-phantom-gray-200 mx-auto mb-3" />
-            <p className="text-phantom-gray-400 text-sm font-medium">Bitcoin Wallet</p>
-            <p className="text-phantom-gray-300 text-xs mt-1">Coming in the next update</p>
-          </div>
+          <WalletView onClose={() => setTab('chats')} />
         )}
       </div>
 
