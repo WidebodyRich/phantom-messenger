@@ -535,7 +535,7 @@ const LANDING_CSS = `
 
 .landing-page .comparison-table {
   width: 100%;
-  min-width: 600px;
+  min-width: 800px;
   border-collapse: collapse;
   font-family: var(--font-mono);
   font-size: 0.8rem;
@@ -576,6 +576,21 @@ const LANDING_CSS = `
 .landing-page .check { color: var(--green); font-size: 1.1rem; }
 .landing-page .cross { color: #661111; font-size: 1.1rem; }
 
+.landing-page .comparison-table thead th.tor-col {
+  background: rgba(102,17,17,0.08);
+  color: #aa4444;
+}
+.landing-page .comparison-table tbody td.tor-col {
+  background: rgba(102,17,17,0.03);
+}
+.landing-page .comparison-table tbody tr:hover td.tor-col { background: rgba(102,17,17,0.06); }
+.landing-page .comparison-table .tor-note {
+  font-size: 0.65rem;
+  color: #666;
+  display: block;
+  margin-top: 2px;
+}
+
 .landing-page .comparison-result {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -583,6 +598,140 @@ const LANDING_CSS = `
   text-align: center;
   margin-top: 2rem;
   letter-spacing: 2px;
+}
+
+/* ========== DARK WEB COMPARISON ========== */
+.landing-page .darkweb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+.landing-page .darkweb-card {
+  background: var(--card-bg);
+  border: 1px solid rgba(0,255,65,0.08);
+  padding: 2.5rem 2rem;
+  position: relative;
+  transition: all 0.4s;
+  opacity: 0;
+  transform: translateY(30px);
+}
+.landing-page .darkweb-card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.landing-page .darkweb-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--green), transparent);
+}
+.landing-page .darkweb-card:hover {
+  border-color: rgba(0,255,65,0.25);
+  box-shadow: 0 0 30px rgba(0,255,65,0.06);
+  transform: translateY(-4px);
+}
+.landing-page .darkweb-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.landing-page .darkweb-title {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--green);
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 1rem;
+}
+.landing-page .darkweb-detail {
+  font-size: 0.85rem;
+  color: #aaa;
+  line-height: 1.7;
+}
+.landing-page .darkweb-analogy {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--green);
+  margin-top: 1rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 2px solid var(--green-dark);
+  background: rgba(0,255,65,0.02);
+}
+
+.landing-page .darkweb-quote {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--green);
+  line-height: 1.8;
+  text-align: center;
+  max-width: 800px;
+  margin: 4rem auto 0;
+  padding: 2rem;
+  border: 1px solid rgba(0,255,65,0.15);
+  background: rgba(0,255,65,0.02);
+  position: relative;
+}
+.landing-page .darkweb-quote::before {
+  content: '\\201C';
+  position: absolute;
+  top: -0.5rem;
+  left: 1.5rem;
+  font-size: 3rem;
+  color: var(--green-dark);
+  line-height: 1;
+}
+
+/* ========== WHO SHOULD USE ========== */
+.landing-page .who-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+.landing-page .who-card {
+  background: var(--card-bg);
+  padding: 2.5rem 2rem;
+  border: 1px solid #222;
+  position: relative;
+}
+.landing-page .who-card.phantom-card {
+  border-color: var(--green);
+  box-shadow: 0 0 30px rgba(0,255,65,0.08);
+}
+.landing-page .who-card-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 1.5rem;
+}
+.landing-page .who-card .who-card-label { color: var(--grey); }
+.landing-page .who-card.phantom-card .who-card-label { color: var(--green); text-shadow: 0 0 10px rgba(0,255,65,0.5); }
+.landing-page .who-list {
+  list-style: none;
+}
+.landing-page .who-list li {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #ccc;
+  padding: 0.5rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  line-height: 1.5;
+}
+.landing-page .who-list li::before {
+  content: '\\25B8';
+  position: absolute;
+  left: 0;
+}
+.landing-page .who-card .who-list li::before { color: var(--grey-dark); }
+.landing-page .who-card.phantom-card .who-list li::before { color: var(--green); }
+
+@media (max-width: 900px) {
+  .landing-page .darkweb-grid { grid-template-columns: 1fr; }
+  .landing-page .who-grid { grid-template-columns: 1fr; }
 }
 
 /* ========== PRICING ========== */
@@ -1331,28 +1480,107 @@ export default function Landing() {
           <th>Feature</th>
           <th>Signal</th>
           <th>Telegram</th>
+          <th class="tor-col">Tor Browser</th>
           <th class="phantom-col">PHANTOM</th>
         </tr>
       </thead>
       <tbody>
-        <tr><td>E2EE By Default</td><td><span class="check">\u2713</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Sealed Sender</td><td><span class="check">\u2713</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Anonymous Account</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Seed Phrase Login</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Screenshot Blocked</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Pegasus Protection</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Panic Button</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Duress PIN</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>iCloud Protected</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Zero IP Logging</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Bitcoin Wallet</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Lightning Network</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Paid Groups</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Anti-Forensics</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
-        <tr><td>Outside US Servers</td><td><span class="cross">\u2717</span></td><td><span class="check">\u2713</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>End-To-End Encryption</td><td><span class="check">\u2713</span></td><td><span class="cross">\u2717</span><span class="tor-note">Opt-in only</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Connection only, not content</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Non-Custodial Bitcoin Wallet</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="tor-col"><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Anonymous Sign-Up</td><td><span class="cross">\u2717</span><span class="tor-note">Phone required</span></td><td><span class="cross">\u2717</span><span class="tor-note">Phone required</span></td><td class="tor-col"><span class="check">\u2713</span><span class="tor-note">Not a messenger</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Zero Metadata</td><td><span class="check">\u2713</span><span class="tor-note">Partial</span></td><td><span class="cross">\u2717</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Traffic analysis</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Disappearing Messages</td><td><span class="check">\u2713</span></td><td><span class="check">\u2713</span><span class="tor-note">Secret chats</span></td><td class="tor-col"><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Screen Capture Protection</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="tor-col"><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Panic Button / Duress PIN</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="tor-col"><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Device-Level Protection</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="tor-col"><span class="cross">\u2717</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Payment Privacy</td><td><span class="cross">\u2717</span></td><td><span class="cross">\u2717</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">On-chain traceable</span></td><td class="phantom-col"><span class="check">\u2713</span><span class="tor-note">Lightning Network</span></td></tr>
+        <tr><td>Server Seizure Risk</td><td><span class="check">\u2713</span><span class="tor-note">Low</span></td><td><span class="cross">\u2717</span><span class="tor-note">High</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Sites seized constantly</span></td><td class="phantom-col"><span class="check">\u2713</span><span class="tor-note">Nothing to seize</span></td></tr>
+        <tr><td>Ease Of Use</td><td><span class="check">\u2713</span></td><td><span class="check">\u2713</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Technical knowledge</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Works On iPhone</td><td><span class="check">\u2713</span></td><td><span class="check">\u2713</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Limited</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Legal Status</td><td><span class="check">\u2713</span></td><td><span class="check">\u2713</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Grey area</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Reliability</td><td><span class="check">\u2713</span></td><td><span class="check">\u2713</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Slow and unreliable</span></td><td class="phantom-col"><span class="check">\u2713</span></td></tr>
+        <tr><td>Deanonymization Resistant</td><td><span class="check">\u2713</span><span class="tor-note">Unlikely</span></td><td><span class="cross">\u2717</span><span class="tor-note">Metadata exposed</span></td><td class="tor-col"><span class="cross">\u2717</span><span class="tor-note">Proven repeatedly</span></td><td class="phantom-col"><span class="check">\u2713</span><span class="tor-note">Math prevents it</span></td></tr>
       </tbody>
     </table>
     <div class="comparison-result">PHANTOM MESSENGER WINS: 15/15 CATEGORIES</div>
+  </div>
+</section>
+
+<!-- ========== PHANTOM VS DARK WEB ========== -->
+<section class="section" id="darkweb">
+  <div class="reveal">
+    <div class="section-label">[ DECLASSIFIED ]</div>
+    <div class="section-title">Why Phantom Makes The Dark Web Obsolete</div>
+    <div class="section-subtitle">Different approach. Superior result.</div>
+  </div>
+  <div class="darkweb-grid">
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\uD83D\uDD12</div>
+      <div class="darkweb-title">Content Encryption vs Connection Encryption</div>
+      <div class="darkweb-detail">Tor hides WHERE you are going but not WHAT you are sending. Exit nodes can read unencrypted traffic. Phantom encrypts the CONTENT of every message before it leaves your device. Even if someone intercepted your Phantom traffic they would see nothing but encrypted noise.</div>
+      <div class="darkweb-analogy">"Tor is a tinted-window car to a secret meeting. Phantom is speaking in a code only your recipient understands."</div>
+    </div>
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\uD83D\uDDA5\uFE0F</div>
+      <div class="darkweb-title">No Servers To Seize</div>
+      <div class="darkweb-detail">Dark web sites have servers. When seized, every user gets exposed. Silk Road. AlphaBay. Hansa. DarkMarket \u2014 all seized, all users exposed. Phantom: messages deleted from servers the moment they are delivered. No message history. No user identity. Even a full server seizure yields encrypted blobs and hashed usernames \u2014 mathematically useless.</div>
+    </div>
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\uD83D\uDCF1</div>
+      <div class="darkweb-title">Works Like A Normal App</div>
+      <div class="darkweb-detail">Tor requires technical knowledge most people do not have. Misconfigured browsers, JavaScript leaks, DNS resolution errors \u2014 most users make mistakes that expose them. Phantom works like any normal app on your iPhone or Android. The complexity is invisible. The security is automatic.</div>
+      <div class="darkweb-analogy">"Privacy that requires technical expertise is not real privacy for most people."</div>
+    </div>
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\uD83D\uDC41\uFE0F\u200D\uD83D\uDDE8\uFE0F</div>
+      <div class="darkweb-title">Sealed Sender vs Traffic Analysis</div>
+      <div class="darkweb-detail">Tor is vulnerable to traffic analysis \u2014 governments run their own Tor nodes to correlate traffic patterns. Timing attacks, guard node surveillance, and correlation attacks have deanonymized users repeatedly. Phantom\u2019s Sealed Sender means our own servers literally cannot see who sent a message to whom. The social graph does not exist anywhere.</div>
+    </div>
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\uD83D\uDEE1\uFE0F</div>
+      <div class="darkweb-title">Device-Level Protection</div>
+      <div class="darkweb-detail">Tor does nothing if your device is compromised. Spyware reads what is on your screen regardless of how you connected. Phantom blocks screen capture at the OS level, defends against Pegasus spyware, wipes secure memory on exit, offers a duress PIN that opens a decoy app, and has a panic button for instant total data destruction.</div>
+    </div>
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\u26A1</div>
+      <div class="darkweb-title">Lightning Network vs Traceable Bitcoin</div>
+      <div class="darkweb-detail">Dark web Bitcoin transactions are permanently recorded on the public blockchain. Chainalysis and similar firms trace them for the FBI, DEA, and IRS regularly. Phantom uses Lightning Network: transactions do not appear on the public blockchain, leave no permanent record, settle in seconds, and cannot be traced back to either party.</div>
+    </div>
+    <div class="darkweb-card reveal">
+      <div class="darkweb-icon">\u2705</div>
+      <div class="darkweb-title">Fully Legal And Legitimate</div>
+      <div class="darkweb-detail">The dark web carries legal risk just from association. Law enforcement monitors it heavily. Accessing certain services is itself a crime in many jurisdictions. Phantom is a legitimate registered business, available on official App Stores, built on open-source encryption standards. Journalists, lawyers, executives, and activists use Phantom for legally protected private communication.</div>
+    </div>
+  </div>
+  <div class="darkweb-quote reveal">The dark web tries to hide where you are going. Phantom makes what you are saying mathematically impossible to understand regardless of where it goes. One hides your path. The other makes the destination irrelevant.</div>
+</section>
+
+<!-- ========== WHO SHOULD USE WHAT ========== -->
+<section class="section" id="who-uses">
+  <div class="reveal">
+    <div class="section-label">[ USE CASE ANALYSIS ]</div>
+    <div class="section-title">The Right Tool For The Job</div>
+  </div>
+  <div class="who-grid reveal">
+    <div class="who-card">
+      <div class="who-card-label">[ TOR / DARK WEB ]</div>
+      <ul class="who-list">
+        <li>Accessing censored information in authoritarian countries</li>
+        <li>Whistleblowers accessing specific hidden services</li>
+        <li>Security researchers and journalists investigating the deep web</li>
+        <li>People with deep technical knowledge and operational security training</li>
+      </ul>
+    </div>
+    <div class="who-card phantom-card">
+      <div class="who-card-label">[ PHANTOM MESSENGER ]</div>
+      <ul class="who-list">
+        <li>Anyone who wants real privacy in daily communication</li>
+        <li>Professionals protecting legally privileged conversations</li>
+        <li>Journalists protecting sources and sensitive leads</li>
+        <li>Businesses protecting sensitive internal discussions</li>
+        <li>Anyone who wants dark-web-level security in a beautiful, normal app</li>
+      </ul>
+    </div>
   </div>
 </section>
 
