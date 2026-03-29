@@ -9,7 +9,7 @@ import TypingIndicator from './TypingIndicator';
 import { formatDateSeparator } from '../../utils/formatters';
 
 export default function ChatArea({ onBack }) {
-  const { activeConversation, messages, sendMessage } = useChat();
+  const { activeConversation, messages, sendMessage, markConversationRead } = useChat();
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
   const containerRef = useRef(null);
@@ -20,6 +20,13 @@ export default function ChatArea({ onBack }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversationMessages.length]);
+
+  // Mark conversation as read when opened
+  useEffect(() => {
+    if (activeConversation?.id && activeConversation?.unread > 0) {
+      markConversationRead(activeConversation.id);
+    }
+  }, [activeConversation?.id, activeConversation?.unread, markConversationRead]);
 
   const handleScroll = () => {
     if (!containerRef.current) return;

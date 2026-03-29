@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import * as messagesApi from '../api/messages';
+import * as conversationsApi from '../api/conversations';
 import * as groupsApi from '../api/groups';
 import * as keysApi from '../api/keys';
 import { encrypt, decrypt, startSession, hasSession, restoreEncryptionState, getPreKeyCount, generateMorePreKeys } from '../crypto/signalProtocol';
@@ -27,6 +28,88 @@ export function ChatProvider({ children }) {
       });
     }
   }, [user]);
+
+  // Load persistent conversations from server
+  const fetchConversations = useCallback(async () => {
+    try {
+      const res = await conversationsApi.getConversations();
+      if (res.success && Array.isArray(res.data)) {
+        const serverConvos = res.data.map((c) => ({
+          id: c.peerId,
+          peerId: c.peerId,
+          username: c.peerUsername,
+          name: c.peerUsername,
+          lastMessage: c.lastMessage || '',
+          lastMessageAt: c.lastMessageAt,
+          unread: c.unreadCount || 0,
+          isPinned: c.isPinned || false,
+          isMuted: c.isMuted || false,
+        }));
+        setConversations((prev) => {
+          // Merge: server is source of truth, but keep any local-only convos
+          const serverIds = new Set(serverConvos.map((c) => c.id));
+          const localOnly = prev.filter((c) => !serverIds.has(c.id));
+          return [...serverConvos, ...localOnly];
+        });
+      }
+    } catch (err) {
+      if (err?.status !== 401) {
+        console.error('[Chat] Fetch conversations error:', err?.message || err);
+      }
+    }
+  }, []);
+
+  // Load conversations on mount
+  useEffect(() => {
+    if (user) fetchConversations();
+  }, [user, fetchConversations]);
+
+  // Delete a conversation (soft-delete on server, remove from local state)
+  const deleteConversation = useCallback(async (peerId) => {
+    setConversations((prev) => prev.filter((c) => c.id !== peerId));
+    if (activeConversation?.id === peerId) setActiveConversation(null);
+    try {
+      await conversationsApi.deleteConversation(peerId);
+    } catch (err) {
+      console.error('[Chat] Delete conversation error:', err?.message || err);
+    }
+  }, [activeConversation]);
+
+  // Mark conversation as read
+  const markConversationRead = useCallback(async (peerId) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === peerId ? { ...c, unread: 0 } : c))
+    );
+    try {
+      await conversationsApi.markConversationRead(peerId);
+    } catch (err) {
+      console.error('[Chat] Mark read error:', err?.message || err);
+    }
+  }, []);
+
+  // Pin/unpin conversation
+  const pinConversation = useCallback(async (peerId, isPinned) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === peerId ? { ...c, isPinned } : c))
+    );
+    try {
+      await conversationsApi.pinConversation(peerId, isPinned);
+    } catch (err) {
+      console.error('[Chat] Pin error:', err?.message || err);
+    }
+  }, []);
+
+  // Mute/unmute conversation
+  const muteConversation = useCallback(async (peerId, isMuted) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === peerId ? { ...c, isMuted } : c))
+    );
+    try {
+      await conversationsApi.muteConversation(peerId, isMuted);
+    } catch (err) {
+      console.error('[Chat] Mute error:', err?.message || err);
+    }
+  }, []);
 
   // Check and replenish pre-keys
   const checkPreKeys = useCallback(async () => {
@@ -224,7 +307,9 @@ export function ChatProvider({ children }) {
       activeConversation, setActiveConversation,
       messages, setMessages,
       groups, fetchGroups,
-      sendMessage, fetchPending,
+      sendMessage, fetchPending, fetchConversations,
+      deleteConversation, markConversationRead,
+      pinConversation, muteConversation,
       typingUsers,
     }}>
       {children}
