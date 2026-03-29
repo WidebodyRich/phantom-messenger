@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, ArrowRight, AlertCircle, CheckCircle2, Shield, Copy, Check, AlertTriangle } from 'lucide-react';
+import { MessageCircle, ArrowRight, AlertCircle, CheckCircle2, Shield, Copy, Check, AlertTriangle, Mail, Phone, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { generateWallet, saveWalletToSession } from '../crypto/btcWallet';
 import { initializeEncryption } from '../crypto/signalProtocol';
@@ -10,6 +10,11 @@ import toast from 'react-hot-toast';
 
 export default function Register() {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showOptional, setShowOptional] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState('username'); // 'username' | 'seedPhrase' | 'success'
@@ -26,11 +31,21 @@ export default function Register() {
     return null;
   };
 
+  const validateForm = () => {
+    const nameErr = validateUsername(username.trim());
+    if (nameErr) return nameErr;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Invalid email address';
+    if (password && password.length < 8) return 'Password must be at least 8 characters';
+    if (email && !password) return 'Password required when adding an email';
+    if (phone && !/^\+?[0-9]{10,15}$/.test(phone.replace(/[\s()-]/g, ''))) return 'Invalid phone number';
+    return null;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    const validationError = validateUsername(username.trim());
+    const validationError = validateForm();
     if (validationError) {
       setError(validationError);
       return;
@@ -45,9 +60,12 @@ export default function Register() {
       // Generate Signal Protocol keys
       const signalKeys = await initializeEncryption();
 
-      // Register with backend
+      // Register with backend (unified endpoint)
       const res = await register({
         username: username.trim(),
+        email: email.trim() || null,
+        phone: phone.replace(/[\s()-]/g, '').trim() || null,
+        password: password || null,
         identityKeyPublic: signalKeys.identityKeyPublic,
         signedPreKeyPublic: signalKeys.signedPreKeyPublic,
         signedPreKeySignature: signalKeys.signedPreKeySignature,
@@ -151,7 +169,7 @@ export default function Register() {
         {/* Card */}
         <div className="card">
           <AnimatePresence mode="wait">
-            {/* Step 1: Username */}
+            {/* Step 1: Username + Optional Fields */}
             {step === 'username' && (
               <motion.form
                 key="step1"
@@ -161,8 +179,11 @@ export default function Register() {
                 onSubmit={handleSubmit}
                 className="space-y-4"
               >
+                {/* Username (required) */}
                 <div>
-                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">Choose a username</label>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">
+                    Choose a username <span className="text-red-400">*</span>
+                  </label>
                   <input
                     type="text"
                     value={username}
@@ -175,6 +196,91 @@ export default function Register() {
                   />
                   <p className="mt-1.5 text-xs text-phantom-gray-400">3-32 characters, letters, numbers, underscores</p>
                 </div>
+
+                {/* Optional fields toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowOptional(!showOptional)}
+                  className="w-full flex items-center justify-between py-2 px-1 text-sm font-medium text-phantom-green hover:text-phantom-green/80 transition-colors"
+                >
+                  <span>Add email, phone, or password (optional)</span>
+                  {showOptional ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {/* Optional fields */}
+                <AnimatePresence>
+                  {showOptional && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-3 overflow-hidden"
+                    >
+                      {/* Email */}
+                      <div>
+                        <label className="block text-xs font-medium text-phantom-gray-500 mb-1.5">
+                          <Mail className="w-3.5 h-3.5 inline mr-1" />
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                          placeholder="you@example.com"
+                          className="input-field text-sm"
+                          autoComplete="email"
+                        />
+                      </div>
+
+                      {/* Phone */}
+                      <div>
+                        <label className="block text-xs font-medium text-phantom-gray-500 mb-1.5">
+                          <Phone className="w-3.5 h-3.5 inline mr-1" />
+                          Phone number
+                        </label>
+                        <input
+                          type="tel"
+                          value={phone}
+                          onChange={(e) => { setPhone(e.target.value); setError(''); }}
+                          placeholder="+1 (555) 123-4567"
+                          className="input-field text-sm"
+                          autoComplete="tel"
+                        />
+                      </div>
+
+                      {/* Password */}
+                      <div>
+                        <label className="block text-xs font-medium text-phantom-gray-500 mb-1.5">
+                          Password {email && <span className="text-red-400">*</span>}
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={password}
+                            onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                            placeholder="Min 8 characters"
+                            className="input-field text-sm pr-10"
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-phantom-gray-400 hover:text-phantom-gray-600"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        {email && !password && (
+                          <p className="mt-1 text-xs text-amber-500">Password required with email</p>
+                        )}
+                      </div>
+
+                      <p className="text-[11px] text-phantom-gray-400 leading-relaxed">
+                        Adding email or phone gives you extra login options. Your recovery phrase always works regardless.
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <div className="bg-phantom-gray-50 rounded-xl p-4 flex items-start gap-3">
                   <Shield className="w-5 h-5 text-phantom-green mt-0.5 flex-shrink-0" />

@@ -39,21 +39,46 @@ export function AuthProvider({ children }) {
     init();
   }, [fetchUser]);
 
+  // Unified register — works for all auth methods
   const register = async (data) => {
-    const res = await authApi.registerWithSeed(data);
+    const res = await authApi.register(data);
     if (res.success) {
       setUser({ id: res.data.userId, username: res.data.username, tier: res.data.tier });
     }
     return res;
   };
 
-  const login = async (data) => {
+  // Seed login (challenge-response)
+  const loginWithSeed = async (data) => {
     const res = await authApi.loginWithSeed(data);
     if (res.success) {
       await fetchUser();
     }
     return res;
   };
+
+  // Email + password login
+  const loginWithEmail = async ({ email, password }) => {
+    const res = await authApi.loginWithEmail({ email, password });
+    if (res.success) {
+      await fetchUser();
+      await restoreEncryptionState();
+    }
+    return res;
+  };
+
+  // Phone login — verify SMS code
+  const loginWithPhone = async ({ phone, code }) => {
+    const res = await authApi.verifyPhoneCode({ phone, code });
+    if (res.success) {
+      await fetchUser();
+      await restoreEncryptionState();
+    }
+    return res;
+  };
+
+  // Legacy alias
+  const login = loginWithSeed;
 
   const logout = async () => {
     try { await authApi.logout(); } catch {}
@@ -63,7 +88,12 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, register, login, logout, fetchUser, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{
+      user, loading,
+      register, login, loginWithSeed, loginWithEmail, loginWithPhone,
+      logout, fetchUser,
+      isAuthenticated: !!user,
+    }}>
       {children}
     </AuthContext.Provider>
   );

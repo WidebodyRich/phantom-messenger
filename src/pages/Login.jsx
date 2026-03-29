@@ -1,48 +1,49 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, ArrowRight, AlertCircle, Key, ArrowLeft } from 'lucide-react';
+import { MessageCircle, ArrowRight, AlertCircle, Key, Mail, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { restoreWalletFromMnemonic, saveWalletToSession } from '../crypto/btcWallet';
 import { restoreEncryptionState } from '../crypto/signalProtocol';
 import * as authApi from '../api/auth';
 import toast from 'react-hot-toast';
 
+const TABS = [
+  { id: 'seed', label: 'Recovery Phrase', icon: Key, recommended: true },
+  { id: 'email', label: 'Email', icon: Mail },
+  { id: 'phone', label: 'Phone', icon: Phone },
+];
+
 export default function Login() {
-  const [username, setUsername] = useState('');
+  const [activeTab, setActiveTab] = useState('seed');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [mode, setMode] = useState('username'); // 'username' | 'seed'
-  const [seedWords, setSeedWords] = useState(Array(12).fill(''));
   const navigate = useNavigate();
-  const { fetchUser } = useAuth();
+  const { fetchUser, loginWithEmail, loginWithPhone } = useAuth();
 
-  const handleUsernameLogin = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (!username.trim()) {
-      setError('Username is required');
-      return;
-    }
-    setLoading(true);
-    try {
-      const challengeRes = await authApi.loginWithSeedChallenge(username.trim());
-      if (!challengeRes.success) {
-        setError(challengeRes.error || 'User not found');
-        setLoading(false);
-        return;
-      }
-      // For web client, auto-sign the challenge with stored identity
-      // The challenge/response flow requires the private key from registration
-      // Direct the user to use seed phrase login instead
-      setError('Use your recovery phrase to sign in. Click "Login with Recovery Phrase" below.');
-      setLoading(false);
-    } catch (err) {
-      setError(err.message || 'Login failed');
-      setLoading(false);
-    }
-  };
+  // ── Seed phrase state ──
+  const [seedWords, setSeedWords] = useState(Array(12).fill(''));
 
+  // ── Email state ──
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetStep, setResetStep] = useState('request'); // 'request' | 'verify'
+  const [resetMessage, setResetMessage] = useState('');
+
+  // ── Phone state ──
+  const [phone, setPhone] = useState('');
+  const [smsCode, setSmsCode] = useState('');
+  const [phoneStep, setPhoneStep] = useState('enter'); // 'enter' | 'verify'
+  const [phoneLastFour, setPhoneLastFour] = useState('');
+
+  // ══════════════════════════════════════════
+  // Seed Phrase Login
+  // ══════════════════════════════════════════
   const handleSeedLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -56,25 +57,20 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // Restore wallet from mnemonic
       const wallet = restoreWalletFromMnemonic(mnemonic);
 
-      // Look up user by BTC address — try server first, then local mapping
+      // Look up user by BTC address
       let foundUsername = null;
-
-      // Check local address mapping first (fast path)
       const addrMap = JSON.parse(localStorage.getItem('phantom_addr_map') || '{}');
       if (addrMap[wallet.address]) {
         foundUsername = addrMap[wallet.address];
       }
 
-      // If not found locally, try server lookup (cross-device recovery)
       if (!foundUsername) {
         try {
           const lookupRes = await authApi.lookupByAddress(wallet.address);
           if (lookupRes.success && lookupRes.data?.username) {
             foundUsername = lookupRes.data.username;
-            // Cache locally for next time
             addrMap[wallet.address] = foundUsername;
             localStorage.setItem('phantom_addr_map', JSON.stringify(addrMap));
           }
@@ -82,12 +78,12 @@ export default function Login() {
       }
 
       if (!foundUsername) {
-        setError('No account found with this recovery phrase. Make sure you entered the correct words.');
+        setError('No account found with this recovery phrase. Check your words.');
         setLoading(false);
         return;
       }
 
-      // Now login with the found username via challenge-response
+      // Challenge-response auth
       const challengeRes = await authApi.loginWithSeedChallenge(foundUsername);
       if (!challengeRes.success) {
         setError('Account found but login failed. Please try again.');
@@ -95,42 +91,26 @@ export default function Login() {
         return;
       }
 
-      // Sign the challenge using the wallet's derived identity
-      // Since we derived the same wallet from the seed, we prove ownership
-      const challengeId = challengeRes.data.challengeId;
-
-      // Create a signature from the mnemonic-derived key to prove identity
       const encoder = new TextEncoder();
       const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(wallet.privateKey),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
+        'raw', encoder.encode(wallet.privateKey),
+        { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
       );
       const signatureBuffer = await crypto.subtle.sign(
-        'HMAC',
-        keyMaterial,
-        encoder.encode(challengeRes.data.challenge)
+        'HMAC', keyMaterial, encoder.encode(challengeRes.data.challenge)
       );
       const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
 
       const loginRes = await authApi.loginWithSeed({
         username: foundUsername,
-        challengeId,
+        challengeId: challengeRes.data.challengeId,
         signature,
       });
 
       if (loginRes.success) {
-        // Save wallet to session
         saveWalletToSession(wallet);
-
-        // Restore Signal Protocol state
         await restoreEncryptionState();
-
-        // Fetch user profile
         await fetchUser();
-
         toast.success('Welcome back!');
         navigate('/chat');
       } else {
@@ -138,7 +118,7 @@ export default function Login() {
       }
     } catch (err) {
       if (err.message === 'Invalid seed phrase') {
-        setError('Invalid recovery phrase. Please check your words and try again.');
+        setError('Invalid recovery phrase. Please check your words.');
       } else {
         setError(err.message || 'Login failed');
       }
@@ -148,7 +128,6 @@ export default function Login() {
 
   const handleSeedWordChange = (index, value) => {
     const updated = [...seedWords];
-    // Handle paste of full mnemonic
     if (value.includes(' ') && index === 0) {
       const words = value.trim().split(/\s+/);
       for (let i = 0; i < Math.min(words.length, 12); i++) {
@@ -159,6 +138,126 @@ export default function Login() {
     }
     setSeedWords(updated);
     setError('');
+  };
+
+  // ══════════════════════════════════════════
+  // Email + Password Login
+  // ══════════════════════════════════════════
+  const handleEmailLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!email || !password) {
+      setError('Email and password are required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await loginWithEmail({ email, password });
+      if (res.success) {
+        toast.success('Welcome back!');
+        navigate('/chat');
+      } else {
+        setError(res.error || 'Invalid credentials');
+      }
+    } catch (err) {
+      setError(err.message || 'Login failed');
+    }
+    setLoading(false);
+  };
+
+  // ── Password Reset ──
+  const handleRequestReset = async (e) => {
+    e.preventDefault();
+    setError('');
+    setResetMessage('');
+    if (!resetEmail) { setError('Enter your email'); return; }
+    setLoading(true);
+    try {
+      await authApi.requestPasswordReset(resetEmail);
+      setResetStep('verify');
+      setResetMessage('If an account exists, a reset code has been sent.');
+    } catch (err) {
+      setError(err.message || 'Failed to send reset code');
+    }
+    setLoading(false);
+  };
+
+  const handleConfirmReset = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!resetCode || !newPassword) { setError('Code and new password are required'); return; }
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters'); return; }
+    setLoading(true);
+    try {
+      const res = await authApi.confirmPasswordReset({ email: resetEmail, code: resetCode, newPassword });
+      if (res.success) {
+        toast.success('Password reset! Please sign in.');
+        setShowForgot(false);
+        setResetStep('request');
+        setResetEmail('');
+        setResetCode('');
+        setNewPassword('');
+      } else {
+        setError(res.error || 'Reset failed');
+      }
+    } catch (err) {
+      setError(err.message || 'Reset failed');
+    }
+    setLoading(false);
+  };
+
+  // ══════════════════════════════════════════
+  // Phone + SMS Login
+  // ══════════════════════════════════════════
+  const handleRequestSms = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!phone) { setError('Enter your phone number'); return; }
+
+    setLoading(true);
+    try {
+      const res = await authApi.loginWithPhone(phone.replace(/[\s()-]/g, ''));
+      if (res.success) {
+        setPhoneStep('verify');
+        setPhoneLastFour(res.data.phoneLastFour);
+        toast.success('Code sent!');
+      } else {
+        setError(res.error || 'No account with this phone number');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to send code');
+    }
+    setLoading(false);
+  };
+
+  const handleVerifySms = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!smsCode || smsCode.length !== 6) { setError('Enter the 6-digit code'); return; }
+
+    setLoading(true);
+    try {
+      const res = await loginWithPhone({ phone: phone.replace(/[\s()-]/g, ''), code: smsCode });
+      if (res.success) {
+        toast.success('Welcome back!');
+        navigate('/chat');
+      } else {
+        setError(res.error || 'Invalid code');
+      }
+    } catch (err) {
+      setError(err.message || 'Verification failed');
+    }
+    setLoading(false);
+  };
+
+  // ══════════════════════════════════════════
+  // Render
+  // ══════════════════════════════════════════
+  const switchTab = (tabId) => {
+    setActiveTab(tabId);
+    setError('');
+    setShowForgot(false);
   };
 
   return (
@@ -187,83 +286,45 @@ export default function Login() {
 
         {/* Card */}
         <div className="card">
-          <AnimatePresence mode="wait">
-            {/* Username Login */}
-            {mode === 'username' && (
-              <motion.form
-                key="username"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                onSubmit={handleUsernameLogin}
-                className="space-y-4"
+          {/* Tabs */}
+          <div className="flex gap-1 bg-phantom-gray-50 rounded-xl p-1 mb-5">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => switchTab(tab.id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg text-xs font-medium transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-white text-phantom-charcoal shadow-sm'
+                    : 'text-phantom-gray-400 hover:text-phantom-gray-600'
+                }`}
               >
-                <div>
-                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">Username</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => { setUsername(e.target.value); setError(''); }}
-                    placeholder="Enter your username"
-                    className="input-field"
-                    autoFocus
-                    autoComplete="username"
-                  />
-                </div>
-
-                {error && (
-                  <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-500 text-sm">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    <span>{error}</span>
-                  </motion.div>
+                <tab.icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="sm:hidden">{tab.id === 'seed' ? 'Seed' : tab.id === 'email' ? 'Email' : 'Phone'}</span>
+                {tab.recommended && activeTab === tab.id && (
+                  <span className="bg-phantom-green/10 text-phantom-green text-[9px] font-bold px-1.5 py-0.5 rounded-full ml-0.5">
+                    BEST
+                  </span>
                 )}
+              </button>
+            ))}
+          </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="btn-primary w-full flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <>Sign In <ArrowRight className="w-4 h-4" /></>
-                  )}
-                </button>
-
-                {/* Seed Login Toggle */}
-                <button
-                  type="button"
-                  onClick={() => { setMode('seed'); setError(''); }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-phantom-green hover:bg-phantom-green/5 rounded-xl transition-colors"
-                >
-                  <Key className="w-4 h-4" />
-                  Login with Recovery Phrase
-                </button>
-              </motion.form>
-            )}
-
-            {/* Seed Phrase Login */}
-            {mode === 'seed' && (
+          <AnimatePresence mode="wait">
+            {/* ── Seed Phrase Tab ── */}
+            {activeTab === 'seed' && (
               <motion.form
                 key="seed"
-                initial={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
                 onSubmit={handleSeedLogin}
                 className="space-y-4"
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <button
-                    type="button"
-                    onClick={() => { setMode('username'); setError(''); }}
-                    className="p-1 hover:bg-phantom-gray-100 rounded-lg transition-colors"
-                  >
-                    <ArrowLeft className="w-4 h-4 text-phantom-gray-500" />
-                  </button>
-                  <label className="text-sm font-medium text-phantom-charcoal">Enter your 12-word recovery phrase</label>
-                </div>
+                <label className="text-sm font-medium text-phantom-charcoal block">
+                  Enter your 12-word recovery phrase
+                </label>
 
-                {/* Seed Word Grid */}
                 <div className="grid grid-cols-3 gap-2">
                   {seedWords.map((word, i) => (
                     <div key={i} className="relative">
@@ -307,6 +368,253 @@ export default function Login() {
                   )}
                 </button>
               </motion.form>
+            )}
+
+            {/* ── Email Tab ── */}
+            {activeTab === 'email' && !showForgot && (
+              <motion.form
+                key="email"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                onSubmit={handleEmailLogin}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                    placeholder="you@example.com"
+                    className="input-field"
+                    autoFocus
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">Password</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                      placeholder="Enter your password"
+                      className="input-field pr-10"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-phantom-gray-400 hover:text-phantom-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => { setShowForgot(true); setResetEmail(email); setError(''); }}
+                  className="text-xs text-phantom-green hover:underline"
+                >
+                  Forgot password?
+                </button>
+
+                {error && (
+                  <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-500 text-sm">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{error}</span>
+                  </motion.div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>Sign In <ArrowRight className="w-4 h-4" /></>
+                  )}
+                </button>
+              </motion.form>
+            )}
+
+            {/* ── Forgot Password Flow ── */}
+            {activeTab === 'email' && showForgot && (
+              <motion.div
+                key="forgot"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-4"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowForgot(false); setError(''); setResetStep('request'); }}
+                    className="p-1 hover:bg-phantom-gray-100 rounded-lg transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-phantom-gray-500" />
+                  </button>
+                  <span className="text-sm font-medium text-phantom-charcoal">Reset Password</span>
+                </div>
+
+                {resetStep === 'request' ? (
+                  <form onSubmit={handleRequestReset} className="space-y-3">
+                    <input
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      className="input-field"
+                      autoFocus
+                    />
+                    {resetMessage && <p className="text-xs text-phantom-green">{resetMessage}</p>}
+                    {error && (
+                      <p className="flex items-center gap-2 text-red-500 text-sm">
+                        <AlertCircle className="w-4 h-4" /> {error}
+                      </p>
+                    )}
+                    <button type="submit" disabled={loading} className="btn-primary w-full">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : 'Send Reset Code'}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleConfirmReset} className="space-y-3">
+                    <p className="text-xs text-phantom-gray-500">Enter the 6-digit code sent to your email and choose a new password.</p>
+                    <input
+                      type="text"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="6-digit code"
+                      className="input-field text-center tracking-widest text-lg"
+                      maxLength={6}
+                      autoFocus
+                    />
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="New password (min 8 characters)"
+                      className="input-field"
+                    />
+                    {error && (
+                      <p className="flex items-center gap-2 text-red-500 text-sm">
+                        <AlertCircle className="w-4 h-4" /> {error}
+                      </p>
+                    )}
+                    <button type="submit" disabled={loading} className="btn-primary w-full">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : 'Reset Password'}
+                    </button>
+                  </form>
+                )}
+              </motion.div>
+            )}
+
+            {/* ── Phone Tab ── */}
+            {activeTab === 'phone' && (
+              <motion.div
+                key="phone"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="space-y-4"
+              >
+                {phoneStep === 'enter' ? (
+                  <form onSubmit={handleRequestSms} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-phantom-charcoal mb-2">Phone Number</label>
+                      <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => { setPhone(e.target.value); setError(''); }}
+                        placeholder="+1 (555) 123-4567"
+                        className="input-field"
+                        autoFocus
+                        autoComplete="tel"
+                      />
+                      <p className="mt-1.5 text-xs text-phantom-gray-400">
+                        We'll send a verification code to this number
+                      </p>
+                    </div>
+
+                    {error && (
+                      <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-500 text-sm">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>{error}</span>
+                      </motion.div>
+                    )}
+
+                    <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2">
+                      {loading ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <>Send Code <ArrowRight className="w-4 h-4" /></>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleVerifySms} className="space-y-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <button
+                        type="button"
+                        onClick={() => { setPhoneStep('enter'); setError(''); setSmsCode(''); }}
+                        className="p-1 hover:bg-phantom-gray-100 rounded-lg transition-colors"
+                      >
+                        <ArrowLeft className="w-4 h-4 text-phantom-gray-500" />
+                      </button>
+                      <span className="text-sm font-medium text-phantom-charcoal">
+                        Enter verification code
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-phantom-gray-500">
+                      Code sent to number ending in ****{phoneLastFour}
+                    </p>
+
+                    <input
+                      type="text"
+                      value={smsCode}
+                      onChange={(e) => { setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
+                      placeholder="000000"
+                      className="input-field text-center tracking-[0.5em] text-2xl font-mono"
+                      maxLength={6}
+                      autoFocus
+                    />
+
+                    {error && (
+                      <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-500 text-sm">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        <span>{error}</span>
+                      </motion.div>
+                    )}
+
+                    <button type="submit" disabled={loading || smsCode.length !== 6} className="btn-primary w-full flex items-center justify-center gap-2">
+                      {loading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Verifying...</span>
+                        </div>
+                      ) : (
+                        <>Verify & Sign In <ArrowRight className="w-4 h-4" /></>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleRequestSms}
+                      disabled={loading}
+                      className="w-full text-center text-xs text-phantom-green hover:underline"
+                    >
+                      Resend code
+                    </button>
+                  </form>
+                )}
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
