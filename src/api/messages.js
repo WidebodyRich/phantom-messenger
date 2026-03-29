@@ -17,3 +17,7 @@ export async function getMessageHistory(peerId, { limit = 50, before } = {}) {
   if (before) params.append('before', before);
   return client.get(`/api/messages/history/${peerId}?${params}`);
 }
+
+export async function reportScreenshot(conversationPartnerId) {
+  return client.post('/api/messages/screenshot-alert', { conversationPartnerId });
+}

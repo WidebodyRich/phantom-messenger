@@ -43,6 +43,17 @@ export default function MessageBubble({ message, isMine, showTail }) {
   const { ciphertext, plaintext, displayText, messageType, createdAt, pending, failed, delivered, read } = message;
   const text = displayText || plaintext || ciphertext;
 
+  // System messages (screenshot alerts, etc) render as centered banners
+  if (messageType === 'system') {
+    return (
+      <div className="flex justify-center py-2">
+        <span className="bg-amber-50 text-amber-700 text-xs font-medium px-4 py-1.5 rounded-full border border-amber-200">
+          {text}
+        </span>
+      </div>
+    );
+  }
+
   // Check if this is a BTC payment message
   const isBtcPayment = messageType === 'btc_payment' || (() => {
     try { const p = JSON.parse(text); return p.type === 'btc_payment'; } catch { return false; }

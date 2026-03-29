@@ -13,6 +13,6 @@ export const TIERS = {
   pro: { name: 'Pro', price: 149.99, unlimited: true },
 };
 
-export const MESSAGE_POLL_INTERVAL = 3000;
+export const MESSAGE_POLL_INTERVAL = 5000;
 export const BLOCKSTREAM_TESTNET_API = 'https://blockstream.info/testnet/api';
 export const COINGECKO_API = 'https://api.coingecko.com/api/v3';

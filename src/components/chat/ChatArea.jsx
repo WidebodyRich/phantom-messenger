@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Phone, Video, Lock, MoreVertical, ChevronDown } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
@@ -7,6 +7,7 @@ import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import TypingIndicator from './TypingIndicator';
 import { formatDateSeparator } from '../../utils/formatters';
+import { createUserWatermark } from '../../utils/watermark';
 
 export default function ChatArea({ onBack }) {
   const { activeConversation, messages, sendMessage, markConversationRead, loadMessageHistory, loadOlderMessages } = useChat();
@@ -18,6 +19,7 @@ export default function ChatArea({ onBack }) {
   const [hasMore, setHasMore] = useState(true);
 
   const conversationMessages = messages[activeConversation?.id] || [];
+  const watermarkUrl = useMemo(() => user ? createUserWatermark(user.username) : null, [user?.username]);
 
   // Load message history when conversation opens
   useEffect(() => {
@@ -135,6 +137,7 @@ export default function ChatArea({ onBack }) {
         ref={containerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-5 py-4 bg-phantom-gray-50/50"
+        style={watermarkUrl ? { backgroundImage: `url(${watermarkUrl})`, backgroundRepeat: 'repeat' } : undefined}
       >
         {conversationMessages.length === 0 ? (
           <div className="h-full flex items-center justify-center">

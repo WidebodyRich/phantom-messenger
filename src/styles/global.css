@@ -46,3 +46,20 @@
            bg-[length:200%_100%] animate-shimmer rounded-xl;
   }
 }
+
+/* ── Screenshot & Screen Recording Protection ──────────── */
+
+/* Hide all content when printing (Ctrl+P workaround) */
+@media print {
+  body * {
+    display: none !important;
+  }
+  body::after {
+    content: 'Phantom Messenger — Screen capture is not allowed.';
+    display: block;
+    font-size: 24px;
+    text-align: center;
+    padding: 100px;
+    color: #333;
+  }
+}
