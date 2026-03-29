@@ -15,6 +15,8 @@ export default defineConfig({
   },
   define: {
     'process.env': {},
+    'process.browser': true,
+    'process.version': JSON.stringify(''),
     global: 'globalThis',
   },
   optimizeDeps: {
