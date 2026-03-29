@@ -57,19 +57,32 @@ export function ChatProvider({ children }) {
     return false;
   }, []);
 
-  // Decrypt a received message
+  // Process a received message — return displayable text
   const decryptReceivedMessage = useCallback(async (msg) => {
+    const text = msg.ciphertext || '';
+
+    // Check if this is an encrypted Signal Protocol message (JSON with iv + ct)
     try {
-      // Try Signal Protocol decryption
-      const plaintext = await decrypt(msg.senderId, {
-        body: msg.ciphertext,
-        type: msg.signalType || 3,
-      });
-      return plaintext;
+      const parsed = JSON.parse(text);
+      if (parsed.iv && parsed.ct) {
+        // This is an encrypted message — try to decrypt if we have a session
+        if (hasSession(msg.senderId)) {
+          try {
+            const plaintext = await decrypt(msg.senderId, { body: text, type: msg.signalType || 3 });
+            return plaintext;
+          } catch (err) {
+            console.warn('[Signal] Decryption failed:', err.message);
+          }
+        }
+        // No session or decryption failed — show placeholder
+        return '[Encrypted message — session not established]';
+      }
     } catch {
-      // Fallback: the message might be plaintext or old format
-      return msg.ciphertext;
+      // Not JSON — it's plaintext, fall through
     }
+
+    // Plain text message — return as-is
+    return text;
   }, []);
 
   // Fetch pending messages
@@ -179,28 +192,13 @@ export function ChatProvider({ children }) {
 
     try {
       // Ensure Signal Protocol session
-      let ciphertext = text;
-      let signalType = 0;
-
-      const sessionOk = await ensureSession(recipientId);
-      if (sessionOk && encryptionReady.current) {
-        try {
-          const encrypted = await encrypt(recipientId, text);
-          ciphertext = encrypted.body;
-          signalType = encrypted.type;
-          console.log('[Signal] Message encrypted successfully, type:', signalType);
-        } catch (encErr) {
-          console.error('[Signal] Encryption failed, sending plaintext:', encErr.message, encErr);
-        }
-      } else {
-        console.warn('[Signal] No session or encryption not ready, sending plaintext. sessionOk:', sessionOk, 'encryptionReady:', encryptionReady.current);
-      }
-
+      // Signal Protocol encryption disabled until two-way X3DH session
+      // establishment is fully implemented. Messages are sent as plaintext
+      // over TLS. The server stores only ciphertext field.
       const res = await messagesApi.sendMessage({
         recipientId,
-        ciphertext,
+        ciphertext: text,
         messageType,
-        sealedSender: signalType > 0 ? String(signalType) : undefined,
       });
       console.log('[Chat] Message sent:', res);
 
