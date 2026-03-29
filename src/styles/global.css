@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    @apply font-sans antialiased;
+    overflow-x: hidden;
+  }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-phantom-gray-200 rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-phantom-gray-400; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-phantom-green text-white font-semibold py-3 px-6 rounded-2xl
+           transition-all duration-200 hover:bg-phantom-green-dark hover:shadow-green-glow
+           active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply bg-phantom-gray-100 text-phantom-charcoal font-medium py-3 px-6 rounded-2xl
+           transition-all duration-200 hover:bg-phantom-gray-200 active:scale-[0.97];
+  }
+  .btn-ghost {
+    @apply bg-transparent text-phantom-gray-500 font-medium py-2 px-4 rounded-xl
+           transition-all duration-200 hover:bg-phantom-gray-50 active:scale-[0.97];
+  }
+  .input-field {
+    @apply w-full bg-phantom-gray-50 border border-phantom-gray-200 rounded-2xl px-4 py-3
+           text-phantom-charcoal placeholder-phantom-gray-400 outline-none
+           transition-all duration-200 focus:border-phantom-green focus:ring-2
+           focus:ring-phantom-green/20 focus:bg-white;
+  }
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-phantom-gray-200/50 p-6;
+  }
+  .badge {
+    @apply inline-flex items-center justify-center min-w-[20px] h-5 px-1.5
+           bg-phantom-green text-white text-xs font-bold rounded-full;
+  }
+  .skeleton {
+    @apply bg-gradient-to-r from-phantom-gray-100 via-phantom-gray-50 to-phantom-gray-100
+           bg-[length:200%_100%] animate-shimmer rounded-xl;
+  }
+}

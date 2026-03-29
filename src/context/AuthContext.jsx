@@ -1,0 +1,71 @@
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { setAccessToken, getAccessToken } from '../api/client';
+import * as authApi from '../api/auth';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchUser = useCallback(async () => {
+    try {
+      const res = await authApi.getMe();
+      if (res.success) {
+        setUser(res.data);
+      }
+    } catch {
+      setUser(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const refreshToken = sessionStorage.getItem('phantom_refresh');
+      if (refreshToken) {
+        try {
+          await authApi.refreshAccessToken();
+          await fetchUser();
+        } catch {
+          sessionStorage.removeItem('phantom_refresh');
+        }
+      }
+      setLoading(false);
+    };
+    init();
+  }, [fetchUser]);
+
+  const register = async (data) => {
+    const res = await authApi.registerWithSeed(data);
+    if (res.success) {
+      setUser({ id: res.data.userId, username: res.data.username, tier: res.data.tier });
+    }
+    return res;
+  };
+
+  const login = async (data) => {
+    const res = await authApi.loginWithSeed(data);
+    if (res.success) {
+      await fetchUser();
+    }
+    return res;
+  };
+
+  const logout = async () => {
+    await authApi.logout();
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, register, login, logout, fetchUser, isAuthenticated: !!user }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
+}
