@@ -114,7 +114,10 @@ export function ChatProvider({ children }) {
         }
       }
     } catch (err) {
-      console.error('Fetch pending error:', err);
+      // Don't spam console for token expiry — client.js handles refresh
+      if (err?.status !== 401) {
+        console.error('[Chat] Fetch pending error:', err?.message || err);
+      }
     }
   }, [decryptReceivedMessage, checkPreKeys]);
 
@@ -185,22 +188,28 @@ export function ChatProvider({ children }) {
           const encrypted = await encrypt(recipientId, text);
           ciphertext = encrypted.body;
           signalType = encrypted.type;
+          console.log('[Signal] Message encrypted successfully, type:', signalType);
         } catch (encErr) {
-          console.warn('[Signal] Encryption failed, sending plaintext:', encErr.message);
+          console.error('[Signal] Encryption failed, sending plaintext:', encErr.message, encErr);
         }
+      } else {
+        console.warn('[Signal] No session or encryption not ready, sending plaintext. sessionOk:', sessionOk, 'encryptionReady:', encryptionReady.current);
       }
 
-      await messagesApi.sendMessage({
+      const res = await messagesApi.sendMessage({
         recipientId,
         ciphertext,
-        messageType: signalType === 3 ? 'prekey' : signalType === 1 ? 'signal' : messageType,
+        messageType,
+        sealedSender: signalType > 0 ? String(signalType) : undefined,
       });
+      console.log('[Chat] Message sent:', res);
 
       setMessages((prev) => ({
         ...prev,
         [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false } : m)),
       }));
     } catch (err) {
+      console.error('[Chat] Send message failed:', err?.message || err);
       setMessages((prev) => ({
         ...prev,
         [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, failed: true } : m)),

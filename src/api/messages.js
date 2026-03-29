@@ -1,7 +1,7 @@
 import client from './client';
 
-export async function sendMessage({ recipientId, ciphertext, messageType = 'text' }) {
-  return client.post('/api/messages/send', { recipientId, ciphertext, messageType });
+export async function sendMessage({ recipientId, ciphertext, messageType = 'text', sealedSender }) {
+  return client.post('/api/messages/send', { recipientId, ciphertext, messageType, sealedSender });
 }
 
 export async function getPendingMessages() {
