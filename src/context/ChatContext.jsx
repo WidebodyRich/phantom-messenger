@@ -324,17 +324,23 @@ export function ChatProvider({ children }) {
         ciphertext: text,
         messageType,
       });
-      console.log('[Chat] Message sent:', res);
 
-      setMessages((prev) => ({
-        ...prev,
-        [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false } : m)),
-      }));
+      // Mark as sent — handle both response shapes defensively
+      const success = res?.success !== false;
+      if (success) {
+        console.log('[Chat] Message sent:', res);
+        setMessages((prev) => ({
+          ...prev,
+          [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false, failed: false } : m)),
+        }));
+      } else {
+        throw new Error(res?.error || 'Send returned failure');
+      }
     } catch (err) {
       console.error('[Chat] Send message failed:', err?.message || err, 'Status:', err?.status, 'Full:', JSON.stringify(err));
       setMessages((prev) => ({
         ...prev,
-        [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, failed: true } : m)),
+        [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false, failed: true } : m)),
       }));
     }
   }, [user, ensureSession]);
