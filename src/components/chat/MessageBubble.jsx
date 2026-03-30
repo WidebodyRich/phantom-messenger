@@ -1,7 +1,15 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink, FileText, Download, Image as ImageIcon, X } from 'lucide-react';
 import { formatMessageTime } from '../../utils/formatters';
 import { getTxUrl } from '../../api/bitcoin';
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
 
 function BtcPaymentCard({ data, isMine }) {
   let parsed;
@@ -39,6 +47,76 @@ function BtcPaymentCard({ data, isMine }) {
   );
 }
 
+function AttachmentCard({ data, isMine }) {
+  const [lightbox, setLightbox] = useState(false);
+  let parsed;
+  try { parsed = JSON.parse(data); } catch { return <p className="text-[15px]">{data}</p>; }
+
+  const isImage = parsed.fileType?.startsWith('image/');
+  const url = parsed.url;
+
+  if (isImage && url) {
+    return (
+      <>
+        <div className="rounded-xl overflow-hidden cursor-pointer" onClick={() => setLightbox(true)}>
+          <img
+            src={url}
+            alt={parsed.fileName || 'Image'}
+            className="max-w-full max-h-64 object-cover rounded-xl"
+            loading="lazy"
+          />
+          {parsed.caption && (
+            <p className="text-[15px] leading-relaxed mt-2 break-words whitespace-pre-wrap">{parsed.caption}</p>
+          )}
+        </div>
+        {/* Lightbox */}
+        {lightbox && (
+          <div className="fixed inset-0 z-[70] bg-black/90 flex items-center justify-center" onClick={() => setLightbox(false)}>
+            <button className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors" onClick={() => setLightbox(false)}>
+              <X className="w-6 h-6 text-white" />
+            </button>
+            <img src={url} alt={parsed.fileName || 'Image'} className="max-w-[90vw] max-h-[90vh] object-contain" />
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // Non-image file
+  return (
+    <div className={`rounded-xl p-3 ${isMine ? 'bg-white/15' : 'bg-phantom-gray-50 border border-phantom-gray-200'}`}>
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isMine ? 'bg-white/20' : 'bg-phantom-gray-100'}`}>
+          <FileText className={`w-5 h-5 ${isMine ? 'text-white' : 'text-phantom-gray-400'}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium truncate ${isMine ? 'text-white' : 'text-phantom-charcoal'}`}>
+            {parsed.fileName || 'File'}
+          </p>
+          <p className={`text-xs ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
+            {formatFileSize(parsed.fileSize)}
+          </p>
+        </div>
+        {url && (
+          <a
+            href={url}
+            download={parsed.fileName}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`p-2 rounded-lg transition-colors ${isMine ? 'hover:bg-white/20' : 'hover:bg-phantom-gray-100'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Download className={`w-4 h-4 ${isMine ? 'text-white' : 'text-phantom-green'}`} />
+          </a>
+        )}
+      </div>
+      {parsed.caption && (
+        <p className="text-[15px] leading-relaxed mt-2 break-words whitespace-pre-wrap">{parsed.caption}</p>
+      )}
+    </div>
+  );
+}
+
 export default function MessageBubble({ message, isMine, showTail }) {
   const { ciphertext, plaintext, displayText, messageType, createdAt, pending, failed, delivered, read } = message;
   const text = displayText || plaintext || ciphertext;
@@ -54,9 +132,13 @@ export default function MessageBubble({ message, isMine, showTail }) {
     );
   }
 
-  // Check if this is a BTC payment message
+  // Check message types
   const isBtcPayment = messageType === 'btc_payment' || (() => {
     try { const p = JSON.parse(text); return p.type === 'btc_payment'; } catch { return false; }
+  })();
+
+  const isAttachment = messageType === 'image' || messageType === 'file' || messageType === 'video' || messageType === 'audio' || (() => {
+    try { const p = JSON.parse(text); return p.type === 'attachment'; } catch { return false; }
   })();
 
   return (
@@ -75,6 +157,8 @@ export default function MessageBubble({ message, isMine, showTail }) {
       >
         {isBtcPayment ? (
           <BtcPaymentCard data={text} isMine={isMine} />
+        ) : isAttachment ? (
+          <AttachmentCard data={text} isMine={isMine} />
         ) : (
           <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{text}</p>
         )}

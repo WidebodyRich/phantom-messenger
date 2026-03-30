@@ -216,7 +216,7 @@ export default function ChatArea({ onBack }) {
       </div>
 
       {/* Input */}
-      <MessageInput onSend={handleSend} recipientAddress={activeConversation?.btcAddress} />
+      <MessageInput onSend={handleSend} recipientAddress={activeConversation?.btcAddress} recipientId={activeConversation?.id} />
     </div>
   );
 }

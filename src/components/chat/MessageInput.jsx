@@ -1,24 +1,98 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Paperclip, Bitcoin, X, AlertCircle } from 'lucide-react';
+import { Send, Paperclip, Bitcoin, X, AlertCircle, Image, FileText, Loader2 } from 'lucide-react';
 import { loadWalletFromSession, isValidTestnetAddress, buildTransaction } from '../../crypto/btcWallet';
 import { getUTXOs, broadcastTransaction, getBtcPrice, getTxUrl } from '../../api/bitcoin';
+import { uploadAttachment } from '../../api/attachments';
 import toast from 'react-hot-toast';
 
-// Note: File attachments upload to /api/attachments/upload (coming soon)
+// Max file size: 25 MB
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
-export default function MessageInput({ onSend, recipientAddress }) {
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+export default function MessageInput({ onSend, recipientAddress, recipientId }) {
   const [text, setText] = useState('');
   const [showBtcPanel, setShowBtcPanel] = useState(false);
   const [btcAmount, setBtcAmount] = useState('');
   const [sendingBtc, setSendingBtc] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
-  const handleSubmit = (e) => {
+  // Generate preview for images
+  useEffect(() => {
+    if (!selectedFile) {
+      setFilePreview(null);
+      return;
+    }
+    if (selectedFile.type.startsWith('image/')) {
+      const url = URL.createObjectURL(selectedFile);
+      setFilePreview(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setFilePreview(null);
+  }, [selectedFile]);
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`File too large (max ${formatFileSize(MAX_FILE_SIZE)})`);
+      return;
+    }
+
+    setSelectedFile(file);
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = text.trim();
+
+    // If there's a file, upload it and send as attachment message
+    if (selectedFile) {
+      setUploading(true);
+      try {
+        const result = await uploadAttachment(selectedFile, recipientId);
+        const attachmentData = JSON.stringify({
+          type: 'attachment',
+          fileId: result.data?.id || result.id,
+          fileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          fileType: selectedFile.type,
+          url: result.data?.url || result.url,
+          caption: trimmed || undefined,
+        });
+
+        const messageType = selectedFile.type.startsWith('image/') ? 'image' : 'file';
+        onSend(attachmentData, messageType);
+        clearFile();
+        setText('');
+        toast.success('File sent!');
+      } catch (err) {
+        console.error('[Attachment] Upload error:', err);
+        toast.error(err.message || 'File upload failed');
+      }
+      setUploading(false);
+      inputRef.current?.focus();
+      return;
+    }
+
     if (!trimmed) return;
     onSend(trimmed);
     setText('');
@@ -48,7 +122,6 @@ export default function MessageInput({ onSend, recipientAddress }) {
     setSendingBtc(true);
 
     try {
-      // If we have a recipient BTC address, do a real transaction
       if (recipientAddress && isValidTestnetAddress(recipientAddress)) {
         const utxos = await getUTXOs(wallet.address);
         if (!utxos?.length) throw new Error('No funds available');
@@ -66,7 +139,6 @@ export default function MessageInput({ onSend, recipientAddress }) {
         const price = await getBtcPrice() || 0;
         const usdValue = (amount * price).toFixed(2);
 
-        // Send as a payment message in the chat
         const paymentMsg = JSON.stringify({
           type: 'btc_payment',
           amount: amount.toFixed(8),
@@ -78,7 +150,6 @@ export default function MessageInput({ onSend, recipientAddress }) {
         onSend(paymentMsg, 'btc_payment');
         toast.success(`Sent ${amount} BTC!`);
       } else {
-        // No recipient address — send as a payment notification only
         const price = await getBtcPrice() || 0;
         const usdValue = (amount * price).toFixed(2);
         const paymentMsg = JSON.stringify({
@@ -102,6 +173,37 @@ export default function MessageInput({ onSend, recipientAddress }) {
 
   return (
     <div className="bg-white border-t border-phantom-gray-200">
+      {/* File Preview */}
+      <AnimatePresence>
+        {selectedFile && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pt-3 pb-1">
+              <div className="bg-phantom-gray-50 rounded-xl p-3 flex items-center gap-3">
+                {filePreview ? (
+                  <img src={filePreview} alt="Preview" className="w-14 h-14 rounded-lg object-cover" />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg bg-phantom-gray-100 flex items-center justify-center">
+                    <FileText className="w-6 h-6 text-phantom-gray-400" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-phantom-charcoal truncate">{selectedFile.name}</p>
+                  <p className="text-xs text-phantom-gray-400">{formatFileSize(selectedFile.size)}</p>
+                </div>
+                <button onClick={clearFile} className="p-1.5 hover:bg-phantom-gray-200 rounded-lg transition-colors">
+                  <X className="w-4 h-4 text-phantom-gray-400" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* BTC Payment Panel */}
       <AnimatePresence>
         {showBtcPanel && (
@@ -157,16 +259,11 @@ export default function MessageInput({ onSend, recipientAddress }) {
           <label className="w-10 h-10 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer">
             <Paperclip className="w-5 h-5 text-phantom-gray-400" />
             <input
+              ref={fileInputRef}
               type="file"
               className="hidden"
-              accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.mp4"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  toast(`Attachments coming soon! Selected: ${file.name}`, { icon: '📎' });
-                }
-                e.target.value = '';
-              }}
+              accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.mp4,.mov,.avi"
+              onChange={handleFileSelect}
             />
           </label>
           <button
@@ -182,7 +279,7 @@ export default function MessageInput({ onSend, recipientAddress }) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message..."
+              placeholder={selectedFile ? 'Add a caption...' : 'Type a message...'}
               className="w-full bg-phantom-gray-50 rounded-2xl px-4 py-3 pr-12 text-sm resize-none outline-none border border-transparent focus:border-phantom-green/30 transition-all max-h-32"
               rows={1}
               style={{ height: 'auto', minHeight: '44px' }}
@@ -194,14 +291,18 @@ export default function MessageInput({ onSend, recipientAddress }) {
           </div>
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={(!text.trim() && !selectedFile) || uploading}
             className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-              text.trim()
+              (text.trim() || selectedFile) && !uploading
                 ? 'bg-phantom-green text-white hover:bg-phantom-green-dark shadow-green-glow/50 scale-100'
                 : 'bg-phantom-gray-100 text-phantom-gray-300 scale-95'
             }`}
           >
-            <Send className="w-5 h-5" />
+            {uploading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Send className="w-5 h-5" />
+            )}
           </button>
         </form>
       </div>
