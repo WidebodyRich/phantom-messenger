@@ -48,6 +48,15 @@ const STORE_KEY = 'phantom_signal_v2';
 // Vault — encrypts localStorage at rest
 import { vaultSet, vaultGet, vaultRemove } from './vault';
 
+// Cache of JWK strings for non-extractable keys (used by persistStore)
+// Keys are set during lockKeysInMemory() or restoreEncryptionState()
+const _jwkCache = {
+  identityPriv: null,
+  signingPriv: null,
+  signedPreKeyPriv: null,
+  preKeys: new Map(), // keyId -> jwkStr
+};
+
 // ============ PRELOAD / CACHE ============
 // Start CryptoKey import before React renders. Cache the promise so
 // restoreEncryptionState() is called only once.
@@ -108,7 +117,8 @@ async function exportPrivateKey(key) {
 
 async function importPrivateKey(jwkStr) {
   const jwk = JSON.parse(jwkStr);
-  return crypto.subtle.importKey('jwk', jwk, ALGO, true, ['deriveBits']);
+  // Non-extractable: private key material cannot be read back from CryptoKey
+  return crypto.subtle.importKey('jwk', jwk, ALGO, false, ['deriveBits']);
 }
 
 async function exportSigningPrivateKey(key) {
@@ -118,7 +128,8 @@ async function exportSigningPrivateKey(key) {
 
 async function importSigningPrivateKey(jwkStr) {
   const jwk = JSON.parse(jwkStr);
-  return crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+  // Non-extractable: signing key cannot be exported from memory
+  return crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
 }
 
 async function exportSigningPublicKey(key) {
@@ -357,8 +368,9 @@ export async function initializeEncryption() {
   const identityKeyPublic = await exportPublicKey(identityKeyPair.publicKey);
   const signedPreKeyPublic = await exportPublicKey(signedPreKeyPair.publicKey);
 
-  // Persist to localStorage
+  // Persist to localStorage, then lock keys as non-extractable
   await persistStore();
+  await lockKeysInMemory();
 
   console.log('[Signal] Encryption initialized — 100 pre-keys generated');
 
@@ -392,29 +404,34 @@ export async function restoreEncryptionState() {
         publicKey: await importPublicKey(parsed.identityKeyPair.pub),
         privateKey: await importPrivateKey(parsed.identityKeyPair.priv),
       };
+      _jwkCache.identityPriv = parsed.identityKeyPair.priv;
     }
     if (parsed.signingKeyPair) {
       store.signingKeyPair = {
         publicKey: await importSigningPublicKey(parsed.signingKeyPair.pub),
         privateKey: await importSigningPrivateKey(parsed.signingKeyPair.priv),
       };
+      _jwkCache.signingPriv = parsed.signingKeyPair.priv;
     }
     if (parsed.signedPreKey) {
       store.signedPreKey = {
         publicKey: await importPublicKey(parsed.signedPreKey.pub),
         privateKey: await importPrivateKey(parsed.signedPreKey.priv),
       };
+      _jwkCache.signedPreKeyPriv = parsed.signedPreKey.priv;
     }
     store.signedPreKeySignature = parsed.signedPreKeySignature || null;
     store.registrationId = parsed.registrationId || 0;
 
-    // Restore pre-keys
+    // Restore pre-keys (imported as non-extractable, JWK cached)
     if (parsed.preKeys) {
       for (const [id, pk] of Object.entries(parsed.preKeys)) {
-        store.preKeys.set(Number(id), {
+        const numId = Number(id);
+        store.preKeys.set(numId, {
           publicKey: await importPublicKey(pk.pub),
           privateKey: await importPrivateKey(pk.priv),
         });
+        _jwkCache.preKeys.set(numId, pk.priv);
       }
     }
 
@@ -464,19 +481,19 @@ async function persistStore() {
     if (store.identityKeyPair) {
       data.identityKeyPair = {
         pub: await exportPublicKey(store.identityKeyPair.publicKey),
-        priv: await exportPrivateKey(store.identityKeyPair.privateKey),
+        priv: _jwkCache.identityPriv || await exportPrivateKey(store.identityKeyPair.privateKey),
       };
     }
     if (store.signingKeyPair) {
       data.signingKeyPair = {
         pub: await exportSigningPublicKey(store.signingKeyPair.publicKey),
-        priv: await exportSigningPrivateKey(store.signingKeyPair.privateKey),
+        priv: _jwkCache.signingPriv || await exportSigningPrivateKey(store.signingKeyPair.privateKey),
       };
     }
     if (store.signedPreKey) {
       data.signedPreKey = {
         pub: await exportPublicKey(store.signedPreKey.publicKey),
-        priv: await exportPrivateKey(store.signedPreKey.privateKey),
+        priv: _jwkCache.signedPreKeyPriv || await exportPrivateKey(store.signedPreKey.privateKey),
       };
     }
 
@@ -485,7 +502,7 @@ async function persistStore() {
     for (const [id, kp] of store.preKeys.entries()) {
       data.preKeys[id] = {
         pub: await exportPublicKey(kp.publicKey),
-        priv: await exportPrivateKey(kp.privateKey),
+        priv: _jwkCache.preKeys.get(id) || await exportPrivateKey(kp.privateKey),
       };
     }
 
@@ -510,6 +527,50 @@ async function persistStore() {
     await vaultSet(STORE_KEY, JSON.stringify(data));
   } catch (err) {
     console.warn('[Signal] Failed to persist:', err.message);
+  }
+}
+
+/**
+ * Lock all private keys in memory as non-extractable CryptoKeys.
+ * After calling this, crypto.subtle.exportKey() will throw on all private keys.
+ * JWK strings are cached so persistStore() can still write to vault.
+ * Called after initial generation + persist, and after restore.
+ */
+async function lockKeysInMemory() {
+  try {
+    // Lock identity private key
+    if (store.identityKeyPair?.privateKey?.extractable) {
+      const jwk = await exportPrivateKey(store.identityKeyPair.privateKey);
+      _jwkCache.identityPriv = jwk;
+      store.identityKeyPair.privateKey = await importPrivateKey(jwk);
+    }
+
+    // Lock signing private key
+    if (store.signingKeyPair?.privateKey?.extractable) {
+      const jwk = await exportSigningPrivateKey(store.signingKeyPair.privateKey);
+      _jwkCache.signingPriv = jwk;
+      store.signingKeyPair.privateKey = await importSigningPrivateKey(jwk);
+    }
+
+    // Lock signed pre-key private key
+    if (store.signedPreKey?.privateKey?.extractable) {
+      const jwk = await exportPrivateKey(store.signedPreKey.privateKey);
+      _jwkCache.signedPreKeyPriv = jwk;
+      store.signedPreKey.privateKey = await importPrivateKey(jwk);
+    }
+
+    // Lock pre-key private keys
+    for (const [id, kp] of store.preKeys.entries()) {
+      if (kp.privateKey?.extractable) {
+        const jwk = await exportPrivateKey(kp.privateKey);
+        _jwkCache.preKeys.set(id, jwk);
+        kp.privateKey = await importPrivateKey(jwk);
+      }
+    }
+
+    console.log('[Signal] All private keys locked as non-extractable');
+  } catch (err) {
+    console.warn('[Signal] Failed to lock keys:', err.message);
   }
 }
 
@@ -959,6 +1020,7 @@ export async function generateMorePreKeys(startId, count = 80) {
     });
   }
   await persistStore();
+  await lockKeysInMemory(); // Lock new pre-keys as non-extractable
   console.log(`[Signal] Generated ${count} new pre-keys (${store.preKeys.size} total)`);
   return preKeys;
 }
@@ -992,6 +1054,10 @@ export function clearEncryptionState() {
   store.preKeys.clear();
   store.sessions.clear();
   store.identityKeys.clear();
+  _jwkCache.identityPriv = null;
+  _jwkCache.signingPriv = null;
+  _jwkCache.signedPreKeyPriv = null;
+  _jwkCache.preKeys.clear();
   vaultRemove(STORE_KEY);
   clearPreloadCache();
   // Also clear all skipped keys
