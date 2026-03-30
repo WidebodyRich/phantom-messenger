@@ -48,6 +48,48 @@ const STORE_KEY = 'phantom_signal_v2';
 // Vault — encrypts localStorage at rest
 import { vaultSet, vaultGet, vaultRemove } from './vault';
 
+// Key change notification callback
+let _onKeyChangeCallback = null;
+
+/**
+ * Register a callback for when a contact's identity key changes.
+ * Callback receives (userId, { oldKeyB64, newKeyB64 }).
+ */
+export function onIdentityKeyChange(callback) {
+  _onKeyChangeCallback = callback;
+}
+
+/**
+ * Check if identity key changed and fire notification.
+ * Returns true if key changed (or is new).
+ */
+async function checkAndNotifyKeyChange(userId, newKey) {
+  const existingKey = store.identityKeys.get(userId);
+  if (!existingKey) return false; // First time — no change
+
+  const oldB64 = await exportPublicKey(existingKey);
+  const newB64 = await exportPublicKey(newKey);
+
+  if (oldB64 !== newB64) {
+    console.warn(`[Signal] Identity key CHANGED for ${userId.slice(0, 8)}...`);
+
+    // Clear verified status since key changed
+    try {
+      const verified = JSON.parse(localStorage.getItem('phantom_verified_contacts') || '{}');
+      if (verified[userId]) {
+        delete verified[userId];
+        localStorage.setItem('phantom_verified_contacts', JSON.stringify(verified));
+      }
+    } catch {}
+
+    if (_onKeyChangeCallback) {
+      _onKeyChangeCallback(userId, { oldKeyB64: oldB64, newKeyB64: newB64 });
+    }
+    return true;
+  }
+  return false;
+}
+
 // Cache of JWK strings for non-extractable keys (used by persistStore)
 // Keys are set during lockKeysInMemory() or restoreEncryptionState()
 const _jwkCache = {
@@ -678,6 +720,7 @@ export async function startSession(userId, keyBundle) {
   };
 
   store.sessions.set(userId, session);
+  await checkAndNotifyKeyChange(userId, theirIdentityKey);
   store.identityKeys.set(userId, theirIdentityKey);
   await persistStore();
 
@@ -744,6 +787,7 @@ export async function receivePreKeyMessage(senderId, preKeyData) {
   };
 
   store.sessions.set(senderId, session);
+  await checkAndNotifyKeyChange(senderId, theirIdentityKey);
   store.identityKeys.set(senderId, theirIdentityKey);
   await persistStore();
 

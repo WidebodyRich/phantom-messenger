@@ -9,7 +9,7 @@ import {
   restoreEncryptionState, initializeEncryption, isInitialized, hasLocalKeys,
   getPreKeyCount, generateMorePreKeys,
   isEncryptedMessage, purgeExpiredSkippedKeys,
-  waitForPreload,
+  waitForPreload, onIdentityKeyChange,
 } from '../crypto/signalProtocol';
 import { MESSAGE_POLL_INTERVAL } from '../utils/constants';
 import toast from 'react-hot-toast';
@@ -33,6 +33,48 @@ export function ChatProvider({ children }) {
   const cleanupRef = useRef(null);
   // Message queue — holds messages sent before encryption is ready
   const messageQueueRef = useRef([]);
+
+  // ═══════════════════════════════════════════
+  // KEY CHANGE NOTIFICATIONS
+  // ═══════════════════════════════════════════
+  useEffect(() => {
+    onIdentityKeyChange((userId, { oldKeyB64, newKeyB64 }) => {
+      // Find the username for this userId from conversations
+      const conv = conversations.find(c => c.peerId === userId || c.id === userId);
+      const name = conv?.peerUsername || conv?.username || userId.slice(0, 8);
+
+      toast(
+        (t) => (
+          <div className="flex items-start gap-2">
+            <span className="text-amber-500 text-lg mt-0.5">&#9888;</span>
+            <div>
+              <p className="font-medium text-sm text-phantom-charcoal">Security alert</p>
+              <p className="text-xs text-phantom-gray-500 mt-0.5">
+                <strong>@{name}</strong>'s encryption key has changed. This could mean they reinstalled the app, or it could indicate a security issue. Verify their safety number.
+              </p>
+            </div>
+          </div>
+        ),
+        { duration: 10000, style: { maxWidth: '360px' } }
+      );
+
+      // Add a system message to the conversation
+      if (conv) {
+        setMessages(prev => ({
+          ...prev,
+          [conv.id]: [
+            ...(prev[conv.id] || []),
+            {
+              id: `key-change-${Date.now()}`,
+              type: 'system',
+              content: `${name}'s encryption key has changed. Verify their safety number to ensure your conversation is secure.`,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        }));
+      }
+    });
+  }, [conversations]);
 
   // ═══════════════════════════════════════════
   // ENCRYPTION INITIALIZATION
