@@ -132,6 +132,16 @@ function arrayBufferToBase64(buf) {
   return btoa(String.fromCharCode(...new Uint8Array(buf)));
 }
 
+/**
+ * Shared secret fingerprint — first 8 hex chars of SHA-256.
+ * Used to verify both sides derived the same X3DH shared secret.
+ * If initiator and responder fingerprints differ, DH inputs were mismatched.
+ */
+async function sharedSecretFingerprint(secret) {
+  const hash = await crypto.subtle.digest('SHA-256', secret);
+  return [...new Uint8Array(hash).slice(0, 4)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function base64ToArrayBuffer(b64) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
 }
@@ -507,13 +517,32 @@ async function persistStore() {
 export async function startSession(userId, keyBundle) {
   if (!store.identityKeyPair) throw new Error('Encryption not initialized');
 
-  // Import recipient's public keys from their key bundle
-  const theirIdentityKey = await importPublicKey(
-    keyBundle.identityKey || keyBundle.identityKeyPublic
-  );
-  const theirSignedPreKey = await importPublicKey(
-    keyBundle.signedPreKey?.publicKey || keyBundle.signedPreKeyPublic
-  );
+  console.log(`[Signal] === START SESSION (INITIATOR) ===`);
+  console.log(`[Signal] Target: ${userId.slice(0, 8)}...`);
+  console.log(`[Signal] Key bundle fields:`, Object.keys(keyBundle).join(', '));
+
+  // ── Resolve identity key (handle both field name conventions) ──
+  const identityKeyB64 = keyBundle.identityKeyPublic || keyBundle.identityKey;
+  if (!identityKeyB64 || typeof identityKeyB64 !== 'string') {
+    throw new Error(`Missing identity key in bundle (got ${typeof identityKeyB64})`);
+  }
+  const theirIdentityKey = await importPublicKey(identityKeyB64);
+  console.log(`[Signal] Identity key: ${identityKeyB64.slice(0, 16)}...`);
+
+  // ── Resolve signed pre-key (could be string or { publicKey: string }) ──
+  let signedPreKeyB64;
+  if (typeof keyBundle.signedPreKeyPublic === 'string' && keyBundle.signedPreKeyPublic.length > 10) {
+    signedPreKeyB64 = keyBundle.signedPreKeyPublic;
+  } else if (typeof keyBundle.signedPreKey === 'string' && keyBundle.signedPreKey.length > 10) {
+    signedPreKeyB64 = keyBundle.signedPreKey;
+  } else if (keyBundle.signedPreKey?.publicKey) {
+    signedPreKeyB64 = keyBundle.signedPreKey.publicKey;
+  }
+  if (!signedPreKeyB64 || typeof signedPreKeyB64 !== 'string') {
+    throw new Error(`Missing signed pre-key in bundle (signedPreKeyPublic: ${typeof keyBundle.signedPreKeyPublic}, signedPreKey: ${typeof keyBundle.signedPreKey})`);
+  }
+  const theirSignedPreKey = await importPublicKey(signedPreKeyB64);
+  console.log(`[Signal] Signed pre-key: ${signedPreKeyB64.slice(0, 16)}...`);
 
   // Generate ephemeral key pair for this X3DH exchange
   const ephemeralKeyPair = await generateKeyPair();
@@ -526,22 +555,48 @@ export async function startSession(userId, keyBundle) {
   let sharedSecret = concatBuffers(dh1, dh2, dh3);
   let usedPreKeyIndex = null;
 
-  // DH4 with one-time pre-key if available
-  const otpk = keyBundle.oneTimePreKey || (keyBundle.preKeys?.length > 0 ? keyBundle.preKeys[0] : null);
+  // ── Resolve one-time pre-key (could be object, string, or nested in array) ──
+  let otpk = keyBundle.oneTimePreKey || (keyBundle.preKeys?.length > 0 ? keyBundle.preKeys[0] : null);
   if (otpk) {
     try {
-      const theirPreKey = await importPublicKey(otpk.publicKey);
-      const dh4 = await ecdh(ephemeralKeyPair.privateKey, theirPreKey);
-      sharedSecret = concatBuffers(sharedSecret, dh4);
-      usedPreKeyIndex = otpk.index ?? otpk.keyId ?? null;
+      let otpkPublicB64;
+      let otpkIndex;
+      if (typeof otpk === 'string') {
+        // Server returned bare base64 string
+        otpkPublicB64 = otpk;
+        otpkIndex = null;
+        console.log(`[Signal] One-time pre-key (string format): ${otpk.slice(0, 16)}...`);
+      } else if (otpk.publicKey) {
+        // Server returned { index/keyId, publicKey }
+        otpkPublicB64 = otpk.publicKey;
+        otpkIndex = otpk.index ?? otpk.keyId ?? null;
+        console.log(`[Signal] One-time pre-key (object format): idx=${otpkIndex}, key=${otpkPublicB64.slice(0, 16)}...`);
+      } else {
+        console.warn('[Signal] One-time pre-key has unexpected format:', JSON.stringify(otpk).slice(0, 80));
+        otpk = null;
+      }
+
+      if (otpkPublicB64) {
+        const theirPreKey = await importPublicKey(otpkPublicB64);
+        const dh4 = await ecdh(ephemeralKeyPair.privateKey, theirPreKey);
+        sharedSecret = concatBuffers(sharedSecret, dh4);
+        usedPreKeyIndex = otpkIndex;
+        console.log(`[Signal] DH4 completed with pre-key index ${usedPreKeyIndex}`);
+      }
     } catch (e) {
       console.warn('[Signal] DH4 with one-time pre-key failed:', e.message);
     }
+  } else {
+    console.log(`[Signal] No one-time pre-key available — using 3-DH only`);
   }
 
   // Derive root key + chain keys via HKDF (96 bytes)
   const masterKey = await hkdf(sharedSecret, new ArrayBuffer(32), 'PhantomSignalX3DH', 96);
   const masterBytes = new Uint8Array(masterKey);
+
+  // Shared secret fingerprint for debugging (first 8 hex chars of SHA-256)
+  const ssFingerprint = await sharedSecretFingerprint(sharedSecret);
+  console.log(`[Signal] X3DH shared secret fingerprint (INITIATOR): ${ssFingerprint}`);
 
   // INITIATOR (Alice): sending = bytes 32-64, receiving = bytes 64-96
   const session = {
@@ -557,7 +612,7 @@ export async function startSession(userId, keyBundle) {
   await persistStore();
 
   const ephemeralKeyPublic = await exportPublicKey(ephemeralKeyPair.publicKey);
-  console.log(`[Signal] X3DH session INITIATED with ${userId.slice(0, 8)}...`);
+  console.log(`[Signal] X3DH session INITIATED with ${userId.slice(0, 8)}... (pkId: ${usedPreKeyIndex})`);
 
   return { ephemeralKeyPublic, usedPreKeyIndex };
 }
@@ -605,6 +660,10 @@ export async function receivePreKeyMessage(senderId, preKeyData) {
   const masterKey = await hkdf(sharedSecret, new ArrayBuffer(32), 'PhantomSignalX3DH', 96);
   const masterBytes = new Uint8Array(masterKey);
 
+  // Shared secret fingerprint for debugging (must match initiator's)
+  const ssFingerprint = await sharedSecretFingerprint(sharedSecret);
+  console.log(`[Signal] X3DH shared secret fingerprint (RESPONDER): ${ssFingerprint}`);
+
   // RESPONDER (Bob): keys are SWAPPED compared to initiator
   const session = {
     rootKey: masterBytes.slice(0, 32).buffer,
@@ -618,7 +677,7 @@ export async function receivePreKeyMessage(senderId, preKeyData) {
   store.identityKeys.set(senderId, theirIdentityKey);
   await persistStore();
 
-  console.log(`[Signal] X3DH session RECEIVED from ${senderId.slice(0, 8)}...`);
+  console.log(`[Signal] X3DH session RECEIVED from ${senderId.slice(0, 8)}... (pkId: ${preKeyData.pkId})`);
 }
 
 // ============ DOUBLE RATCHET ============
