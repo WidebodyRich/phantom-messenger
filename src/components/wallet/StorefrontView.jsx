@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ShoppingBag, Bitcoin, Star, ExternalLink } from 'lucide-react';
 import { formatBTC, formatUSD } from '../../utils/formatters';
 import { getBTCPriceUSD } from '../../api/wallet';
+import toast from 'react-hot-toast';
 
 const DEMO_ITEMS = [
   { id: 1, name: 'Phantom Sticker Pack', description: 'Exclusive ghost stickers for chat', price: 5000, category: 'Stickers', image: null },
@@ -63,7 +64,10 @@ export default function StorefrontView() {
                     <p className="text-xs font-bold text-phantom-charcoal">{formatBTC(item.price)}</p>
                     <p className="text-[10px] text-phantom-gray-400">{formatUSD((item.price / 100000000) * btcPrice)}</p>
                   </div>
-                  <button className="bg-phantom-green text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-phantom-green-dark transition-all active:scale-95">
+                  <button
+                    onClick={() => toast(`Purchase "${item.name}" coming soon! BTC payments will be available in the next update.`, { icon: '🛍️', duration: 4000 })}
+                    className="bg-phantom-green text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-phantom-green-dark transition-all active:scale-95"
+                  >
                     Buy
                   </button>
                 </div>

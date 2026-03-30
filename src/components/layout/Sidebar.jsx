@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, MessageCircle, Users, Settings as SettingsIcon, LogOut, Bitcoin } from 'lucide-react';
+import { Search, Plus, MessageCircle, Users, Settings as SettingsIcon, LogOut, Bitcoin, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import ConversationItem from '../chat/ConversationItem';
 import NewChatModal from '../chat/NewChatModal';
 import WalletView from '../wallet/WalletView';
+import StorefrontView from '../wallet/StorefrontView';
 import SettingsPage from '../../pages/Settings';
 import PhantomLogo from '../PhantomLogo';
 import { useNavigate } from 'react-router-dom';
@@ -66,6 +67,7 @@ export default function Sidebar() {
           { id: 'chats', icon: MessageCircle, label: 'Chats' },
           { id: 'groups', icon: Users, label: 'Groups' },
           { id: 'wallet', icon: Bitcoin, label: 'Wallet' },
+          { id: 'shop', icon: ShoppingBag, label: 'Shop' },
         ].map(({ id, icon: Icon, label }) => (
           <button
             key={id}
@@ -137,6 +139,9 @@ export default function Sidebar() {
         )}
         {tab === 'wallet' && (
           <WalletView onClose={() => setTab('chats')} />
+        )}
+        {tab === 'shop' && (
+          <StorefrontView />
         )}
       </div>
 
