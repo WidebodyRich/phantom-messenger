@@ -747,6 +747,13 @@ export async function decrypt(senderId, ciphertextEnvelope) {
   }
 
   if (parsed.t === SIGNAL_MSG) {
+    if (!store.sessions.has(senderId)) {
+      // No session for a Signal message — sender has a session we don't.
+      // This happens when our keys were regenerated after the sender cached the old session.
+      // This message is unrecoverable — throw a specific error so the caller can request a session reset.
+      console.error(`[Signal] Signal message from ${senderId.slice(0, 8)}... but NO SESSION — needs session reset`);
+      throw new Error('NO_SESSION_FOR_SIGNAL');
+    }
     return await _decryptBody(senderId, parsed.body);
   }
 
