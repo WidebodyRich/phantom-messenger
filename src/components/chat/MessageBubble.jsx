@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink, FileText, Download, Image as ImageIcon, X } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink, FileText, Download, Image as ImageIcon, X, RefreshCw, Lock } from 'lucide-react';
 import { formatMessageTime } from '../../utils/formatters';
 import { getTxUrl } from '../../api/bitcoin';
 import { useAuth } from '../../context/AuthContext';
+import { useChat } from '../../context/ChatContext';
 
 function formatFileSize(bytes) {
   if (!bytes) return '';
@@ -155,7 +156,8 @@ function AttachmentCard({ data, isMine }) {
 
 export default function MessageBubble({ message, isMine, showTail }) {
   const { user } = useAuth();
-  const { ciphertext, plaintext, displayText, messageType, createdAt, pending, failed, delivered, read } = message;
+  const { retrySendMessage } = useChat();
+  const { ciphertext, plaintext, displayText, messageType, createdAt, pending, failed, delivered, read, decryptionFailed, failReason } = message;
   const text = displayText || plaintext || ciphertext;
 
   // System messages (screenshot alerts, etc) render as centered banners
@@ -204,6 +206,10 @@ export default function MessageBubble({ message, isMine, showTail }) {
           <p data-message-content className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{text}</p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
+          {/* Decryption failed indicator (received messages) */}
+          {decryptionFailed && !isMine && (
+            <Lock className="w-3 h-3 text-amber-400" />
+          )}
           <span className="text-[10px]">{formatMessageTime(createdAt)}</span>
           {isMine && (
             <>
@@ -219,6 +225,16 @@ export default function MessageBubble({ message, isMine, showTail }) {
             </>
           )}
         </div>
+        {/* Retry button for failed messages */}
+        {isMine && failed && (
+          <button
+            onClick={(e) => { e.stopPropagation(); retrySendMessage(message); }}
+            className="flex items-center gap-1.5 mt-1.5 text-[11px] text-red-300 hover:text-white transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Failed to send — tap to retry</span>
+          </button>
+        )}
       </div>
     </motion.div>
   );

@@ -11,7 +11,7 @@ if (typeof window.process === 'undefined') window.process = process;
 // Ensure process.env exists
 if (!globalThis.process.env) globalThis.process.env = {};
 
-console.log('[Phantom] Build v2.2.0 — polyfills loaded');
+console.log('[Phantom] Build v3.1.0 — Signal Protocol E2E (hardened, no plaintext fallback)');
 
 // ── App ────────────────────────────────────────────────
 import React from 'react';

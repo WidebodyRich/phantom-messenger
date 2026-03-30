@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Paperclip, Bitcoin, X, AlertCircle, Image, FileText, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Bitcoin, X, AlertCircle, Image, FileText, Loader2, Shield } from 'lucide-react';
 import { loadWalletFromSession, isValidTestnetAddress, buildTransaction } from '../../crypto/btcWallet';
 import { getUTXOs, broadcastTransaction, getBtcPrice, getTxUrl } from '../../api/bitcoin';
 import { uploadAttachment } from '../../api/attachments';
+import { useChat } from '../../context/ChatContext';
 import imageCompression from 'browser-image-compression';
 import toast from 'react-hot-toast';
 
@@ -18,6 +19,7 @@ function formatFileSize(bytes) {
 }
 
 export default function MessageInput({ onSend, recipientAddress, recipientId }) {
+  const { encryptionReady } = useChat();
   const [text, setText] = useState('');
   const [showBtcPanel, setShowBtcPanel] = useState(false);
   const [btcAmount, setBtcAmount] = useState('');
@@ -280,10 +282,18 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
         )}
       </AnimatePresence>
 
+      {/* Encryption initializing indicator */}
+      {!encryptionReady && (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-t border-amber-100">
+          <Shield className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+          <span className="text-xs text-amber-600 font-medium">Establishing secure connection...</span>
+        </div>
+      )}
+
       {/* Main Input */}
       <div className="px-4 py-3">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <label className="w-10 h-10 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer">
+          <label className={`w-10 h-10 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors flex-shrink-0 ${!encryptionReady ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
             <Paperclip className="w-5 h-5 text-phantom-gray-400" />
             <input
               ref={fileInputRef}
@@ -291,12 +301,14 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
               className="hidden"
               accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.mp4,.mov,.avi"
               onChange={handleFileSelect}
+              disabled={!encryptionReady}
             />
           </label>
           <button
             type="button"
             onClick={() => setShowBtcPanel(!showBtcPanel)}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${showBtcPanel ? 'bg-amber-50 text-amber-500' : 'hover:bg-phantom-gray-50 text-phantom-gray-400'}`}
+            disabled={!encryptionReady}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${!encryptionReady ? 'opacity-50 cursor-not-allowed' : showBtcPanel ? 'bg-amber-50 text-amber-500' : 'hover:bg-phantom-gray-50 text-phantom-gray-400'}`}
           >
             <Bitcoin className="w-5 h-5" />
           </button>
@@ -306,10 +318,11 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={selectedFile ? 'Add a caption...' : 'Type a message...'}
+              placeholder={!encryptionReady ? 'Securing...' : selectedFile ? 'Add a caption...' : 'Type a message...'}
               className="w-full bg-phantom-gray-50 rounded-2xl px-4 py-3 pr-12 text-sm resize-none outline-none border border-transparent focus:border-phantom-green/30 transition-all max-h-32"
               rows={1}
               style={{ height: 'auto', minHeight: '44px' }}
+              disabled={!encryptionReady}
               onInput={(e) => {
                 e.target.style.height = 'auto';
                 e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
@@ -318,15 +331,17 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
           </div>
           <button
             type="submit"
-            disabled={(!text.trim() && !selectedFile) || uploading}
+            disabled={(!text.trim() && !selectedFile) || uploading || !encryptionReady}
             className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-              (text.trim() || selectedFile) && !uploading
+              (text.trim() || selectedFile) && !uploading && encryptionReady
                 ? 'bg-phantom-green text-white hover:bg-phantom-green-dark shadow-green-glow/50 scale-100'
                 : 'bg-phantom-gray-100 text-phantom-gray-300 scale-95'
             }`}
           >
             {uploading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
+            ) : !encryptionReady ? (
+              <Shield className="w-5 h-5" />
             ) : (
               <Send className="w-5 h-5" />
             )}

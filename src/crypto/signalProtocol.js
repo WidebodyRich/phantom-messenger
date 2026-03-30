@@ -1,10 +1,16 @@
 /**
- * Signal Protocol Implementation — PHANTOM MESSENGER v3.0
- * X3DH Key Agreement + Double Ratchet (Bidirectional)
+ * Signal Protocol Implementation — PHANTOM MESSENGER v3.1
+ * X3DH Key Agreement + Double Ratchet (Bidirectional, Hardened)
  *
  * Implements the Signal Protocol specification using Web Crypto API:
  * - X3DH: https://signal.org/docs/specifications/x3dh/
  * - Double Ratchet: https://signal.org/docs/specifications/doubleratchet/
+ *
+ * v3.1 Hardening:
+ * - Skipped message key storage for out-of-order delivery
+ * - Automatic purge of expired skipped keys (48h TTL)
+ * - MAX_SKIP limit to prevent DoS via sequence number inflation
+ * - No plaintext fallback — encrypt or fail
  *
  * Uses ECDH P-256 (browser substitute for Curve25519), HKDF, AES-256-GCM
  *
@@ -18,6 +24,11 @@ const AES_ALGO = 'AES-GCM';
 const HKDF_HASH = 'SHA-256';
 const PREKEY_MSG = 3;
 const SIGNAL_MSG = 1;
+
+// Skipped message key limits
+const MAX_SKIP = 256;            // Max messages we'll skip ahead (prevents DoS)
+const SKIPPED_KEY_TTL_H = 48;   // Hours to keep skipped keys before purging
+const SKIPPED_PREFIX = 'phantom_signal_skipped_';
 
 // In-memory session and key store
 const store = {
@@ -171,6 +182,83 @@ async function sign(privateKey, data) {
   return arrayBufferToBase64(sig);
 }
 
+// ============ SKIPPED MESSAGE KEY STORAGE ============
+
+/**
+ * Store a skipped message key for later out-of-order decryption.
+ * Key = SKIPPED_PREFIX + {userId}_{sequenceNumber}
+ * Each key is single-use and auto-expires after SKIPPED_KEY_TTL_H hours.
+ */
+function storeSkippedMessageKey(userId, sequenceNumber, messageKey) {
+  const storageKey = `${SKIPPED_PREFIX}${userId}_${sequenceNumber}`;
+  const entry = {
+    key: arrayBufferToBase64(messageKey),
+    storedAt: Date.now(),
+  };
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(entry));
+  } catch (e) {
+    console.warn('[Signal] Failed to store skipped key:', e.message);
+  }
+}
+
+/**
+ * Retrieve a skipped message key (single-use — deleted after retrieval).
+ * Returns ArrayBuffer or null.
+ */
+function getSkippedMessageKey(userId, sequenceNumber) {
+  const storageKey = `${SKIPPED_PREFIX}${userId}_${sequenceNumber}`;
+  const raw = localStorage.getItem(storageKey);
+  if (!raw) return null;
+
+  try {
+    const entry = JSON.parse(raw);
+
+    // Check TTL
+    const ageHours = (Date.now() - entry.storedAt) / (1000 * 60 * 60);
+    if (ageHours > SKIPPED_KEY_TTL_H) {
+      localStorage.removeItem(storageKey);
+      return null;
+    }
+
+    // Delete after retrieval — each key is single-use
+    localStorage.removeItem(storageKey);
+    return base64ToArrayBuffer(entry.key);
+  } catch {
+    localStorage.removeItem(storageKey);
+    return null;
+  }
+}
+
+/**
+ * Purge all expired skipped keys from localStorage.
+ * Call periodically (e.g. every 4 hours) and on app load.
+ */
+export function purgeExpiredSkippedKeys() {
+  const now = Date.now();
+  const maxAge = SKIPPED_KEY_TTL_H * 60 * 60 * 1000;
+  let purged = 0;
+
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(SKIPPED_PREFIX)) continue;
+    try {
+      const entry = JSON.parse(localStorage.getItem(k));
+      if (now - entry.storedAt > maxAge) {
+        localStorage.removeItem(k);
+        purged++;
+      }
+    } catch {
+      localStorage.removeItem(k);
+      purged++;
+    }
+  }
+
+  if (purged > 0) {
+    console.log(`[Signal] Purged ${purged} expired skipped message keys`);
+  }
+}
+
 // ============ INITIALIZATION ============
 
 /**
@@ -292,6 +380,9 @@ export async function restoreEncryptionState() {
       }
     }
 
+    // Purge expired skipped keys on restore
+    purgeExpiredSkippedKeys();
+
     console.log(`[Signal] State restored — ${store.preKeys.size} pre-keys, ${store.sessions.size} sessions`);
     return !!store.identityKeyPair;
   } catch (err) {
@@ -387,11 +478,8 @@ export async function startSession(userId, keyBundle) {
   const ephemeralKeyPair = await generateKeyPair();
 
   // === X3DH: 3 (or 4) DH operations ===
-  // DH1 = ECDH(IKa_priv, SPKb_pub) — our identity with their signed pre-key
   const dh1 = await ecdh(store.identityKeyPair.privateKey, theirSignedPreKey);
-  // DH2 = ECDH(EKa_priv, IKb_pub) — our ephemeral with their identity
   const dh2 = await ecdh(ephemeralKeyPair.privateKey, theirIdentityKey);
-  // DH3 = ECDH(EKa_priv, SPKb_pub) — our ephemeral with their signed pre-key
   const dh3 = await ecdh(ephemeralKeyPair.privateKey, theirSignedPreKey);
 
   let sharedSecret = concatBuffers(dh1, dh2, dh3);
@@ -435,25 +523,17 @@ export async function startSession(userId, keyBundle) {
 
 /**
  * X3DH Responder: Establish a session from a received PreKey message (Bob side)
- *
- * Bob receives Alice's first message which contains her identity key,
- * ephemeral key, and which pre-key she used. Bob performs the mirror X3DH
- * to derive the same shared secret.
  */
 export async function receivePreKeyMessage(senderId, preKeyData) {
   if (!store.identityKeyPair) throw new Error('Encryption not initialized');
   if (!store.signedPreKey) throw new Error('No signed pre-key available');
 
-  // Import sender's keys from the PreKey message header
   const theirIdentityKey = await importPublicKey(preKeyData.ik);
   const theirEphemeralKey = await importPublicKey(preKeyData.ek);
 
-  // === Mirror X3DH: same 3 (or 4) DH operations, roles reversed ===
-  // DH1 = ECDH(SPKb_priv, IKa_pub) — our signed pre-key with their identity
+  // Mirror X3DH: same DH operations, roles reversed
   const dh1 = await ecdh(store.signedPreKey.privateKey, theirIdentityKey);
-  // DH2 = ECDH(IKb_priv, EKa_pub) — our identity with their ephemeral
   const dh2 = await ecdh(store.identityKeyPair.privateKey, theirEphemeralKey);
-  // DH3 = ECDH(SPKb_priv, EKa_pub) — our signed pre-key with their ephemeral
   const dh3 = await ecdh(store.signedPreKey.privateKey, theirEphemeralKey);
 
   let sharedSecret = concatBuffers(dh1, dh2, dh3);
@@ -464,7 +544,7 @@ export async function receivePreKeyMessage(senderId, preKeyData) {
     if (preKeyEntry) {
       const dh4 = await ecdh(preKeyEntry.privateKey, theirEphemeralKey);
       sharedSecret = concatBuffers(sharedSecret, dh4);
-      // Consume the one-time pre-key (delete it — it must never be reused)
+      // Consume the one-time pre-key (must never be reused)
       store.preKeys.delete(preKeyData.pkId);
       console.log(`[Signal] One-time pre-key ${preKeyData.pkId} consumed`);
     } else {
@@ -472,13 +552,10 @@ export async function receivePreKeyMessage(senderId, preKeyData) {
     }
   }
 
-  // Derive the same master key via HKDF
   const masterKey = await hkdf(sharedSecret, new ArrayBuffer(32), 'PhantomSignalX3DH', 96);
   const masterBytes = new Uint8Array(masterKey);
 
   // RESPONDER (Bob): keys are SWAPPED compared to initiator
-  // Bob's sendingKey = Alice's receivingKey (bytes 64-96)
-  // Bob's receivingKey = Alice's sendingKey (bytes 32-64)
   const session = {
     rootKey: masterBytes.slice(0, 32).buffer,
     sendingKey: masterBytes.slice(64, 96).buffer,
@@ -512,14 +589,9 @@ async function ratchetChainKey(chainKey) {
 /**
  * Encrypt a message using the Double Ratchet.
  *
- * If this is the first message to this user (sendCount === 0), returns a
- * PreKeyMessage (type 3) that includes our identity key, ephemeral key,
- * and which pre-key we used — so the receiver can establish the session.
- *
  * @param {string} userId - Recipient user ID
  * @param {string} plaintext - Message text to encrypt
  * @param {{ ephemeralKeyPublic?: string, usedPreKeyIndex?: number|null }} [sessionInit]
- *   Session init data from startSession() — required for first message only
  * @returns {{ ciphertext: string, messageType: string }}
  */
 export async function encrypt(userId, plaintext, sessionInit = null) {
@@ -540,7 +612,6 @@ export async function encrypt(userId, plaintext, sessionInit = null) {
   let envelope;
   if (session.sendCount === 1 && sessionInit) {
     // PreKey message (type 3) — first message in this session
-    // Include X3DH init data so receiver can derive shared secret
     const myIdentityKeyPublic = await exportPublicKey(store.identityKeyPair.publicKey);
     envelope = JSON.stringify({
       t: PREKEY_MSG,
@@ -567,9 +638,7 @@ export async function encrypt(userId, plaintext, sessionInit = null) {
 
 /**
  * Decrypt a message using the Double Ratchet.
- *
- * For PreKey messages (type 3), automatically establishes the receiver-side
- * session via receivePreKeyMessage() before decrypting.
+ * Handles out-of-order delivery via skipped message key storage.
  *
  * @param {string} senderId - Sender user ID
  * @param {string} ciphertextEnvelope - The raw ciphertext string from the server
@@ -590,7 +659,6 @@ export async function decrypt(senderId, ciphertextEnvelope) {
   if (!parsed.t && !parsed.body) {
     // Legacy format check: { iv, ct } without wrapper
     if (parsed.iv && parsed.ct) {
-      // Old format — try to decrypt with existing session
       return await _decryptBody(senderId, parsed);
     }
     // Not encrypted at all
@@ -610,16 +678,16 @@ export async function decrypt(senderId, ciphertextEnvelope) {
   }
 
   if (parsed.t === SIGNAL_MSG) {
-    // Normal encrypted message
     return await _decryptBody(senderId, parsed.body);
   }
 
-  // Unknown format — return raw
+  // Unknown format
   return raw;
 }
 
 /**
- * Internal: decrypt the body { iv, ct, sn } using the receiving chain
+ * Internal: decrypt the body { iv, ct, sn } using the receiving chain.
+ * Supports out-of-order message delivery via skipped key storage.
  */
 async function _decryptBody(senderId, body) {
   const session = store.sessions.get(senderId);
@@ -629,15 +697,54 @@ async function _decryptBody(senderId, body) {
     throw new Error('Invalid encrypted body: missing iv or ct');
   }
 
-  // Ratchet the receiving chain
+  const sn = body.sn;
+  const expectedSN = session.recvCount + 1;
+
+  // ── CASE 1: Out-of-order message from the PAST — check skipped keys ──
+  if (sn != null && sn < expectedSN) {
+    const skippedKey = getSkippedMessageKey(senderId, sn);
+    if (skippedKey) {
+      console.log(`[Signal] Decrypting out-of-order message #${sn} from ${senderId.slice(0, 8)} using skipped key`);
+      const plainBuf = await aesDecrypt(skippedKey, body.iv, body.ct);
+      return new TextDecoder().decode(plainBuf);
+    }
+    throw new Error(`Cannot decrypt message #${sn} — key not found (already used or expired)`);
+  }
+
+  // ── CASE 2: Message from the FUTURE — skip ahead and store intermediate keys ──
+  if (sn != null && sn > expectedSN) {
+    const skip = sn - expectedSN;
+    if (skip > MAX_SKIP) {
+      throw new Error(`Too many skipped messages (${skip}). Possible attack or broken session.`);
+    }
+
+    console.log(`[Signal] Skipping ${skip} message(s) ahead to #${sn} from ${senderId.slice(0, 8)}`);
+
+    // Derive and store all intermediate message keys
+    let chainKey = session.receivingKey;
+    for (let i = expectedSN; i < sn; i++) {
+      const { messageKey, nextChainKey } = await ratchetChainKey(chainKey);
+      storeSkippedMessageKey(senderId, i, messageKey);
+      chainKey = nextChainKey;
+    }
+
+    // Now derive the key for the actual message
+    const { messageKey, nextChainKey } = await ratchetChainKey(chainKey);
+    session.receivingKey = nextChainKey;
+    session.recvCount = sn;
+
+    const plainBuf = await aesDecrypt(messageKey, body.iv, body.ct);
+    await persistStore();
+    return new TextDecoder().decode(plainBuf);
+  }
+
+  // ── CASE 3: Expected next message — normal sequential decrypt ──
   const { messageKey, nextChainKey } = await ratchetChainKey(session.receivingKey);
   session.receivingKey = nextChainKey;
   session.recvCount++;
 
-  // Decrypt
   const plainBuf = await aesDecrypt(messageKey, body.iv, body.ct);
   await persistStore();
-
   return new TextDecoder().decode(plainBuf);
 }
 
@@ -702,6 +809,16 @@ export function getLocalRegistrationId() {
 }
 
 /**
+ * Clear a specific session (for retry after broken session)
+ */
+export function clearSession(userId) {
+  store.sessions.delete(userId);
+  store.identityKeys.delete(userId);
+  persistStore();
+  console.log(`[Signal] Session cleared for ${userId.slice(0, 8)}...`);
+}
+
+/**
  * Clear all encryption state (logout)
  */
 export function clearEncryptionState() {
@@ -714,6 +831,11 @@ export function clearEncryptionState() {
   store.sessions.clear();
   store.identityKeys.clear();
   localStorage.removeItem(STORE_KEY);
+  // Also clear all skipped keys
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(SKIPPED_PREFIX)) localStorage.removeItem(k);
+  }
   console.log('[Signal] All encryption state cleared');
 }
 
