@@ -17,6 +17,7 @@ export default defineConfig({
         global: true,
         process: true,
       },
+      protocolImports: true,
     }),
   ],
   resolve: {
@@ -28,7 +29,7 @@ export default defineConfig({
     global: 'globalThis',
   },
   optimizeDeps: {
-    include: ['buffer', 'bitcoinjs-lib', 'bip39', 'bip32', 'tiny-secp256k1', 'ecpair'],
+    include: ['buffer', 'process', 'bitcoinjs-lib', 'bip39', 'bip32', 'ecpair'],
     exclude: ['tiny-secp256k1'],
   },
   build: {

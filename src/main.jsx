@@ -1,14 +1,19 @@
-// Buffer/process polyfills are injected by vite-plugin-node-polyfills
+// ── Polyfills (MUST be first) ──────────────────────────
 import { Buffer } from 'buffer';
-globalThis.Buffer = Buffer;
-window.Buffer = Buffer;
+import process from 'process';
 
-if (typeof globalThis.process === 'undefined') {
-  globalThis.process = { env: {}, browser: true, version: 'v20.0.0' };
-}
+// Ensure Buffer and process are globally available
+if (typeof globalThis.Buffer === 'undefined') globalThis.Buffer = Buffer;
+if (typeof window.Buffer === 'undefined') window.Buffer = Buffer;
+if (typeof globalThis.process === 'undefined') globalThis.process = process;
+if (typeof window.process === 'undefined') window.process = process;
 
-console.log('[Phantom] Build v2.1.0 — plaintext messaging');
+// Ensure process.env exists
+if (!globalThis.process.env) globalThis.process.env = {};
 
+console.log('[Phantom] Build v2.2.0 — polyfills loaded');
+
+// ── App ────────────────────────────────────────────────
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
