@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { ArrowLeft, Phone, Video, Lock, MoreVertical, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowLeft, Phone, Video, Lock, MoreVertical, ChevronDown, Search, BellOff, Trash2, Ban } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import MessageBubble from './MessageBubble';
@@ -8,15 +8,17 @@ import MessageInput from './MessageInput';
 import TypingIndicator from './TypingIndicator';
 import { formatDateSeparator } from '../../utils/formatters';
 import { createUserWatermark } from '../../utils/watermark';
+import toast from 'react-hot-toast';
 
 export default function ChatArea({ onBack }) {
-  const { activeConversation, messages, sendMessage, markConversationRead, loadMessageHistory, loadOlderMessages } = useChat();
+  const { activeConversation, messages, sendMessage, markConversationRead, loadMessageHistory, loadOlderMessages, muteConversation, deleteConversation } = useChat();
   const { user } = useAuth();
   const messagesEndRef = useRef(null);
   const containerRef = useRef(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [showChatMenu, setShowChatMenu] = useState(false);
 
   const conversationMessages = messages[activeConversation?.id] || [];
   const watermarkUrl = useMemo(() => user ? createUserWatermark(user.username) : null, [user?.username]);
@@ -120,15 +122,54 @@ export default function ChatArea({ onBack }) {
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors">
+          <button
+            onClick={() => toast('Voice calls coming soon!', { icon: '📞' })}
+            className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors cursor-pointer"
+            title="Voice Call"
+          >
             <Phone className="w-5 h-5 text-phantom-gray-500" />
           </button>
-          <button className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors">
+          <button
+            onClick={() => toast('Face to Face calls coming soon!', { icon: '📹' })}
+            className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors cursor-pointer"
+            title="Face to Face (F2F)"
+          >
             <Video className="w-5 h-5 text-phantom-gray-500" />
           </button>
-          <button className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors">
-            <MoreVertical className="w-5 h-5 text-phantom-gray-500" />
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowChatMenu(!showChatMenu)}
+              className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <MoreVertical className="w-5 h-5 text-phantom-gray-500" />
+            </button>
+            <AnimatePresence>
+              {showChatMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowChatMenu(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                    className="absolute right-0 top-11 z-50 bg-white rounded-xl shadow-elevated border border-phantom-gray-100 py-1.5 min-w-[180px]"
+                  >
+                    <button onClick={() => { setShowChatMenu(false); toast('Search coming soon', { icon: '🔍' }); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-phantom-charcoal hover:bg-phantom-gray-50 transition-colors">
+                      <Search className="w-4 h-4" /> Search in chat
+                    </button>
+                    <button onClick={() => { setShowChatMenu(false); muteConversation(activeConversation.id); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-phantom-charcoal hover:bg-phantom-gray-50 transition-colors">
+                      <BellOff className="w-4 h-4" /> Mute notifications
+                    </button>
+                    <button onClick={() => { setShowChatMenu(false); deleteConversation(activeConversation.id); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
+                      <Trash2 className="w-4 h-4" /> Delete chat
+                    </button>
+                    <button onClick={() => { setShowChatMenu(false); toast('Block coming soon', { icon: '🚫' }); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors">
+                      <Ban className="w-4 h-4" /> Block user
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 

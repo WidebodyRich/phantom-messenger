@@ -5,6 +5,8 @@ import { loadWalletFromSession, isValidTestnetAddress, buildTransaction } from '
 import { getUTXOs, broadcastTransaction, getBtcPrice, getTxUrl } from '../../api/bitcoin';
 import toast from 'react-hot-toast';
 
+// Note: File attachments upload to /api/attachments/upload (coming soon)
+
 export default function MessageInput({ onSend, recipientAddress }) {
   const [text, setText] = useState('');
   const [showBtcPanel, setShowBtcPanel] = useState(false);
@@ -152,9 +154,21 @@ export default function MessageInput({ onSend, recipientAddress }) {
       {/* Main Input */}
       <div className="px-4 py-3">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <button type="button" className="w-10 h-10 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors flex-shrink-0">
+          <label className="w-10 h-10 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer">
             <Paperclip className="w-5 h-5 text-phantom-gray-400" />
-          </button>
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*,.pdf,.doc,.docx,.txt,.zip,.mp3,.mp4"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  toast(`Attachments coming soon! Selected: ${file.name}`, { icon: '📎' });
+                }
+                e.target.value = '';
+              }}
+            />
+          </label>
           <button
             type="button"
             onClick={() => setShowBtcPanel(!showBtcPanel)}
