@@ -103,6 +103,10 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
           fileSize: selectedFile.size,
           fileType: selectedFile.type,
           url: result.data?.url || result.url,
+          // Encryption metadata — key+IV for AES-256-GCM decryption
+          // Safe to include here: this JSON is E2E encrypted via Signal Protocol
+          encryptionKey: result.encryptionKey,
+          encryptionIV: result.encryptionIV,
           caption: trimmed || undefined,
         });
 

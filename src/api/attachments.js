@@ -1,13 +1,21 @@
 import { getAccessToken } from './client';
 import { API_URL } from '../utils/constants';
+import { encryptFile } from '../crypto/attachmentCrypto';
 
 /**
- * Upload a file attachment.
- * Uses raw fetch (not axios client) because we need multipart/form-data.
+ * Upload a file attachment — encrypts with AES-256-GCM before upload.
+ * The server only ever receives ciphertext.
+ *
+ * Returns: { data: { id, url }, encryptionKey, encryptionIV }
+ * The key+IV must be included in the message metadata (which is E2E encrypted).
  */
 export async function uploadAttachment(file, recipientId) {
+  // Encrypt the file client-side before uploading
+  const { encryptedBlob, keyB64, ivB64 } = await encryptFile(file);
+
+  // Upload the encrypted blob with an opaque filename
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', encryptedBlob, file.name + '.enc');
   if (recipientId) formData.append('recipientId', recipientId);
 
   const token = getAccessToken();
@@ -34,7 +42,13 @@ export async function uploadAttachment(file, recipientId) {
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Upload failed');
-    return data;
+
+    // Return server response + encryption metadata
+    return {
+      ...data,
+      encryptionKey: keyB64,
+      encryptionIV: ivB64,
+    };
   } catch (err) {
     clearTimeout(timeoutId);
     if (err.name === 'AbortError') {

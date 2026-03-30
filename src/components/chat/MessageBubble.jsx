@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink, FileText, Download, Image as ImageIcon, X, RefreshCw, Lock } from 'lucide-react';
+import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink, FileText, Download, Image as ImageIcon, X, RefreshCw, Lock, Loader2 } from 'lucide-react';
 import { formatMessageTime } from '../../utils/formatters';
 import { getTxUrl } from '../../api/bitcoin';
+import { decryptFile } from '../../crypto/attachmentCrypto';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 
@@ -49,6 +50,57 @@ function BtcPaymentCard({ data, isMine }) {
   );
 }
 
+/**
+ * Decrypt an attachment from its URL using the AES-256-GCM key+IV in metadata.
+ * Falls back to the raw URL for unencrypted (legacy) attachments.
+ */
+function useDecryptedUrl(url, encryptionKey, encryptionIV, mimeType) {
+  const [decryptedUrl, setDecryptedUrl] = useState(null);
+  const [decrypting, setDecrypting] = useState(false);
+  const [error, setError] = useState(false);
+  const attempted = useRef(false);
+
+  useEffect(() => {
+    if (!url) return;
+
+    // Legacy attachment — no encryption metadata, use raw URL
+    if (!encryptionKey || !encryptionIV) {
+      setDecryptedUrl(url);
+      return;
+    }
+
+    if (attempted.current) return;
+    attempted.current = true;
+    setDecrypting(true);
+
+    (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Download failed');
+        const encryptedData = await res.arrayBuffer();
+        const decryptedBlob = await decryptFile(encryptedData, encryptionKey, encryptionIV, mimeType || 'application/octet-stream');
+        const objectUrl = URL.createObjectURL(decryptedBlob);
+        setDecryptedUrl(objectUrl);
+      } catch (err) {
+        console.error('[Attachment] Decryption failed:', err);
+        setError(true);
+        // Fallback to raw URL (may not display correctly for encrypted files)
+        setDecryptedUrl(url);
+      }
+      setDecrypting(false);
+    })();
+
+    return () => {
+      // Cleanup object URL on unmount
+      if (decryptedUrl && decryptedUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(decryptedUrl);
+      }
+    };
+  }, [url, encryptionKey, encryptionIV, mimeType]);
+
+  return { decryptedUrl, decrypting, error };
+}
+
 function AttachmentCard({ data, isMine }) {
   const [lightbox, setLightbox] = useState(false);
   let parsed;
@@ -57,7 +109,26 @@ function AttachmentCard({ data, isMine }) {
   const isImage = parsed.fileType?.startsWith('image/');
   const isVideo = parsed.fileType?.startsWith('video/');
   const isAudio = parsed.fileType?.startsWith('audio/');
-  const url = parsed.url;
+  const isEncrypted = !!(parsed.encryptionKey && parsed.encryptionIV);
+
+  const { decryptedUrl, decrypting } = useDecryptedUrl(
+    parsed.url,
+    parsed.encryptionKey,
+    parsed.encryptionIV,
+    parsed.fileType
+  );
+
+  // Decryption loading state
+  if (decrypting) {
+    return (
+      <div className={`p-6 flex flex-col items-center gap-2 ${isMine ? 'bg-black/80' : 'bg-phantom-gray-50'}`}>
+        <Loader2 className={`w-6 h-6 animate-spin ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`} />
+        <p className={`text-xs ${isMine ? 'text-white/50' : 'text-phantom-gray-400'}`}>Decrypting{isImage ? ' image' : isVideo ? ' video' : ''}…</p>
+      </div>
+    );
+  }
+
+  const url = decryptedUrl;
 
   // Video attachment — edge-to-edge, no border
   if (isVideo && url) {
@@ -124,7 +195,7 @@ function AttachmentCard({ data, isMine }) {
     );
   }
 
-  // Non-image file
+  // Non-image file — download triggers decryption
   return (
     <div className={`p-3 ${isMine ? 'bg-black/80' : 'bg-phantom-gray-50 border border-phantom-gray-200'}`}>
       <div className="flex items-center gap-3">
@@ -137,6 +208,7 @@ function AttachmentCard({ data, isMine }) {
           </p>
           <p className={`text-xs ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
             {formatFileSize(parsed.fileSize)}
+            {isEncrypted && <span className="ml-1">🔒</span>}
           </p>
         </div>
         {url && (
