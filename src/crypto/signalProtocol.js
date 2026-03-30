@@ -566,8 +566,14 @@ export async function startSession(userId, keyBundle) {
  * X3DH Responder: Establish a session from a received PreKey message (Bob side)
  */
 export async function receivePreKeyMessage(senderId, preKeyData) {
-  if (!store.identityKeyPair) throw new Error('Encryption not initialized');
-  if (!store.signedPreKey) throw new Error('No signed pre-key available');
+  console.log(`[Signal] === RECEIVE PREKEY MESSAGE ===`);
+  console.log(`[Signal] From: ${senderId.slice(0, 8)}..., pkId: ${preKeyData.pkId}`);
+  console.log(`[Signal] Our identity key loaded: ${!!store.identityKeyPair}`);
+  console.log(`[Signal] Our signed pre-key loaded: ${!!store.signedPreKey}`);
+  console.log(`[Signal] Our pre-keys in store: ${store.preKeys.size}`);
+
+  if (!store.identityKeyPair) throw new Error('Encryption not initialized — no identity key in memory');
+  if (!store.signedPreKey) throw new Error('No signed pre-key available in memory');
 
   const theirIdentityKey = await importPublicKey(preKeyData.ik);
   const theirEphemeralKey = await importPublicKey(preKeyData.ek);
@@ -587,9 +593,12 @@ export async function receivePreKeyMessage(senderId, preKeyData) {
       sharedSecret = concatBuffers(sharedSecret, dh4);
       // Consume the one-time pre-key (must never be reused)
       store.preKeys.delete(preKeyData.pkId);
-      console.log(`[Signal] One-time pre-key ${preKeyData.pkId} consumed`);
+      console.log(`[Signal] One-time pre-key ${preKeyData.pkId} consumed — ${store.preKeys.size} remaining`);
     } else {
-      console.warn(`[Signal] Pre-key ${preKeyData.pkId} not found (may have been used already)`);
+      console.warn(`[Signal] Pre-key ${preKeyData.pkId} NOT FOUND in store (may have been regenerated or already used)`);
+      console.warn(`[Signal] Available pre-key IDs: ${[...store.preKeys.keys()].slice(0, 10).join(', ')}...`);
+      // Continue WITHOUT DH4 — this will cause a key mismatch if the sender included DH4
+      // But we must try, because the message might still be decryptable if both sides skip DH4
     }
   }
 
@@ -707,15 +716,34 @@ export async function decrypt(senderId, ciphertextEnvelope) {
   }
 
   if (parsed.t === PREKEY_MSG) {
+    console.log(`[Signal] Decrypting PreKey message from ${senderId.slice(0, 8)}... (pkId: ${parsed.pkId})`);
+
     // PreKey message — establish session first, then decrypt
-    if (!hasSession(senderId)) {
+    const hadSession = hasSession(senderId);
+    if (!hadSession) {
       await receivePreKeyMessage(senderId, {
         ik: parsed.ik,
         ek: parsed.ek,
         pkId: parsed.pkId,
       });
     }
-    return await _decryptBody(senderId, parsed.body);
+
+    try {
+      const plaintext = await _decryptBody(senderId, parsed.body);
+      console.log(`[Signal] PreKey message decrypted OK from ${senderId.slice(0, 8)}...`);
+      return plaintext;
+    } catch (err) {
+      // If we just created this session and decrypt failed, the session is broken
+      // (key mismatch — sender used old public keys). Clean up so the next
+      // PreKey message from this sender can try fresh.
+      if (!hadSession) {
+        store.sessions.delete(senderId);
+        store.identityKeys.delete(senderId);
+        await persistStore();
+        console.error(`[Signal] PreKey decrypt FAILED — broken session cleaned up for ${senderId.slice(0, 8)}:`, err.message);
+      }
+      throw err; // Re-throw so caller knows decryption failed
+    }
   }
 
   if (parsed.t === SIGNAL_MSG) {

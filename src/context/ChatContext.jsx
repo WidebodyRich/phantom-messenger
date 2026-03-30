@@ -387,7 +387,17 @@ export function ChatProvider({ children }) {
   // ═══════════════════════════════════════════
   // RECEIVE PENDING MESSAGES
   // ═══════════════════════════════════════════
+  // Track messages that failed to decrypt (msgId -> retryCount)
+  const decryptFailCountRef = useRef(new Map());
+
   const fetchPending = useCallback(async () => {
+    // CRITICAL: Don't process messages until encryption is ready.
+    // Otherwise decrypt() will fail because CryptoKeys aren't loaded yet,
+    // and the message would be acknowledged (lost) with decryptionFailed.
+    if (!encryptionReadyRef.current || !isInitialized()) {
+      return; // Skip this poll cycle — will retry on next interval
+    }
+
     try {
       const res = await messagesApi.getPendingMessages();
       if (res.success && Array.isArray(res.data)) {
@@ -399,30 +409,63 @@ export function ChatProvider({ children }) {
             const convId = msg.senderId;
             const plaintext = await decryptReceivedMessage(msg);
 
-            let processedMsg;
             if (plaintext === null) {
-              // Decryption failed — show locked indicator, NEVER show raw ciphertext
-              processedMsg = {
+              // Decryption failed — check retry count
+              const failCount = (decryptFailCountRef.current.get(msg.id) || 0) + 1;
+              decryptFailCountRef.current.set(msg.id, failCount);
+
+              if (failCount < 3) {
+                // Don't acknowledge — leave on server for retry on next poll
+                console.warn(`[Chat] Decrypt failed for msg ${msg.id?.slice(0, 8)} (attempt ${failCount}/3) — will retry`);
+                continue; // Skip to next message, don't add to UI yet
+              }
+
+              // After 3 attempts, give up — acknowledge and show locked indicator
+              console.error(`[Chat] Decrypt permanently failed for msg ${msg.id?.slice(0, 8)} after ${failCount} attempts`);
+              decryptFailCountRef.current.delete(msg.id);
+
+              const processedMsg = {
                 ...msg,
                 displayText: '\u{1F512} Encrypted message',
                 decryptionFailed: true,
               };
-            } else {
-              processedMsg = {
-                ...msg,
-                plaintext,
-                displayText: plaintext,
-              };
+
+              setMessages((prev) => ({
+                ...prev,
+                [convId]: [...(prev[convId] || []), processedMsg],
+              }));
+
+              const senderName = msg.senderUsername || '';
+              setConversations((prev) => {
+                const existing = prev.find((c) => c.id === convId);
+                if (existing) {
+                  return prev.map((c) =>
+                    c.id === convId ? { ...c, lastMessage: '\u{1F512} Encrypted message', lastMessageAt: msg.createdAt, unread: (c.unread || 0) + 1, username: c.username || senderName, name: c.name || senderName } : c
+                  );
+                }
+                return [{ id: convId, senderId: msg.senderId, username: senderName, name: senderName, lastMessage: '\u{1F512} Encrypted message', lastMessageAt: msg.createdAt, unread: 1 }, ...prev];
+              });
+
+              // Acknowledge after max retries to prevent infinite loop
+              messagesApi.acknowledgeMessage(msg.id).catch(console.error);
+              continue;
             }
+
+            // Decryption succeeded
+            decryptFailCountRef.current.delete(msg.id);
+
+            const processedMsg = {
+              ...msg,
+              plaintext,
+              displayText: plaintext,
+            };
 
             setMessages((prev) => ({
               ...prev,
               [convId]: [...(prev[convId] || []), processedMsg],
             }));
 
-            const preview = processedMsg.decryptionFailed
-              ? '\u{1F512} Encrypted message'
-              : (plaintext.length > 50 ? plaintext.slice(0, 50) + '...' : plaintext);
+            const preview = plaintext.length > 50 ? plaintext.slice(0, 50) + '...' : plaintext;
             const senderName = msg.senderUsername || '';
 
             setConversations((prev) => {
@@ -435,7 +478,7 @@ export function ChatProvider({ children }) {
               return [{ id: convId, senderId: msg.senderId, username: senderName, name: senderName, lastMessage: preview, lastMessageAt: msg.createdAt, unread: 1 }, ...prev];
             });
 
-            // Acknowledge receipt
+            // Acknowledge receipt — only for successfully decrypted messages
             messagesApi.acknowledgeMessage(msg.id).catch(console.error);
           }
           checkPreKeys();
@@ -451,16 +494,18 @@ export function ChatProvider({ children }) {
     }
   }, [decryptReceivedMessage, checkPreKeys]);
 
-  // Poll for new messages
+  // Poll for new messages — ONLY after encryption is ready
+  // This prevents the race condition where messages arrive before
+  // CryptoKeys are imported, causing permanent decryption failure.
   useEffect(() => {
-    if (user) {
+    if (user && encryptionReady) {
       fetchPending();
       pollRef.current = setInterval(fetchPending, MESSAGE_POLL_INTERVAL);
     }
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [user, fetchPending]);
+  }, [user, encryptionReady, fetchPending]);
 
   // Fetch groups
   const fetchGroups = useCallback(async () => {
