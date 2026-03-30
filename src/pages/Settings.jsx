@@ -4,6 +4,7 @@ import { ArrowLeft, User, Bell, Shield, Palette, Info, LogOut, ChevronRight, Loc
 import { useAuth } from '../context/AuthContext';
 import { validatePassword } from '../utils/passwordValidation';
 import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
+import TwoFactorSetup from '../components/TwoFactorSetup';
 import { loadWalletFromSession } from '../crypto/btcWallet';
 import { getPreKeyCount } from '../crypto/signalProtocol';
 import * as authApi from '../api/auth';
@@ -26,9 +27,16 @@ export default function Settings({ onBack }) {
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [panelError, setPanelError] = useState('');
+  const [totpEnabled, setTotpEnabled] = useState(false);
 
   useEffect(() => {
     loadProfile();
+    // Fetch 2FA status
+    import('../api/client').then(({ default: client }) => {
+      client.get('/api/auth/2fa/status').then(res => {
+        if (res.success) setTotpEnabled(res.data.enabled);
+      }).catch(() => {});
+    });
   }, []);
 
   const loadProfile = async () => {
@@ -267,6 +275,12 @@ export default function Settings({ onBack }) {
             </div>
           </div>
         )}
+
+        {/* 2FA Section */}
+        <div>
+          <h3 className="text-xs font-semibold text-phantom-gray-400 uppercase tracking-wider mb-2 px-1">Two-Factor Auth</h3>
+          <TwoFactorSetup enabled={totpEnabled} onStatusChange={setTotpEnabled} />
+        </div>
 
         {/* Settings Sections */}
         {sections.map((section) => (

@@ -40,8 +40,8 @@ export async function loginWithSeedChallenge(username) {
   return client.post('/api/auth/login/seed/challenge', { username });
 }
 
-export async function loginWithSeed({ username, challengeId, signature }) {
-  const res = await client.post('/api/auth/login/seed', { username, challengeId, signature });
+export async function loginWithSeed({ username, challengeId, signature, totpCode }) {
+  const res = await client.post('/api/auth/login/seed', { username, challengeId, signature, totpCode });
   if (res.success) {
     setAccessToken(res.data.accessToken);
   }
@@ -49,8 +49,8 @@ export async function loginWithSeed({ username, challengeId, signature }) {
 }
 
 // ── Email + Password Login ──
-export async function loginWithEmail({ email, password }) {
-  const res = await client.post('/api/auth/login/email', { email, password });
+export async function loginWithEmail({ email, password, totpCode }) {
+  const res = await client.post('/api/auth/login/email', { email, password, totpCode });
   if (res.success) {
     setAccessToken(res.data.accessToken);
   }
@@ -62,8 +62,8 @@ export async function loginWithPhone(phone) {
   return client.post('/api/auth/login/phone', { phone });
 }
 
-export async function verifyPhoneCode({ phone, code }) {
-  const res = await client.post('/api/auth/login/phone/verify', { phone, code });
+export async function verifyPhoneCode({ phone, code, totpCode }) {
+  const res = await client.post('/api/auth/login/phone/verify', { phone, code, totpCode });
   if (res.success) {
     setAccessToken(res.data.accessToken);
   }

@@ -94,9 +94,9 @@ export function AuthProvider({ children }) {
   };
 
   // Email + password login
-  const loginWithEmail = async ({ email, password }) => {
-    const res = await authApi.loginWithEmail({ email, password });
-    if (res.success) {
+  const loginWithEmail = async ({ email, password, totpCode }) => {
+    const res = await authApi.loginWithEmail({ email, password, totpCode });
+    if (res.success && !res.data?.requires2FA) {
       await fetchUser();
       await restoreEncryptionState();
     }
@@ -104,9 +104,9 @@ export function AuthProvider({ children }) {
   };
 
   // Phone login — verify SMS code
-  const loginWithPhone = async ({ phone, code }) => {
-    const res = await authApi.verifyPhoneCode({ phone, code });
-    if (res.success) {
+  const loginWithPhone = async ({ phone, code, totpCode }) => {
+    const res = await authApi.verifyPhoneCode({ phone, code, totpCode });
+    if (res.success && !res.data?.requires2FA) {
       await fetchUser();
       await restoreEncryptionState();
     }

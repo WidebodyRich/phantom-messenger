@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, ArrowRight, AlertCircle, Key, Mail, Phone, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { MessageCircle, ArrowRight, AlertCircle, Key, Mail, Phone, Eye, EyeOff, ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { restoreWalletFromMnemonic, saveWalletToSession } from '../crypto/btcWallet';
 import { restoreEncryptionState } from '../crypto/signalProtocol';
@@ -40,6 +40,11 @@ export default function Login() {
   const [smsCode, setSmsCode] = useState('');
   const [phoneStep, setPhoneStep] = useState('enter'); // 'enter' | 'verify'
   const [phoneLastFour, setPhoneLastFour] = useState('');
+
+  // ── 2FA state ──
+  const [show2FA, setShow2FA] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+  const [pending2FALogin, setPending2FALogin] = useState(null); // stores the retry function
 
   // ══════════════════════════════════════════
   // Seed Phrase Login
@@ -108,6 +113,43 @@ export default function Login() {
       });
 
       if (loginRes.success) {
+        if (loginRes.data?.requires2FA) {
+          // Store wallet for after 2FA verification
+          const seedWallet = wallet;
+          const seedUsername = foundUsername;
+          setShow2FA(true);
+          setTotpCode('');
+          setPending2FALogin(() => async (code) => {
+            setLoading(true);
+            try {
+              // Need a new challenge for the retry
+              const c2 = await authApi.loginWithSeedChallenge(seedUsername);
+              const km2 = await crypto.subtle.importKey(
+                'raw', new TextEncoder().encode(seedWallet.privateKey),
+                { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+              );
+              const sig2 = await crypto.subtle.sign('HMAC', km2, new TextEncoder().encode(c2.data.challenge));
+              const s2 = btoa(String.fromCharCode(...new Uint8Array(sig2)));
+              const r2 = await authApi.loginWithSeed({
+                username: seedUsername, challengeId: c2.data.challengeId, signature: s2, totpCode: code,
+              });
+              if (r2.success && !r2.data?.requires2FA) {
+                saveWalletToSession(seedWallet);
+                await restoreEncryptionState();
+                await fetchUser();
+                toast.success('Welcome back!');
+                navigate('/chat');
+              } else {
+                setError(r2.error || 'Invalid 2FA code');
+              }
+            } catch (err) {
+              setError(err.message || '2FA verification failed');
+            }
+            setLoading(false);
+          });
+          setLoading(false);
+          return;
+        }
         saveWalletToSession(wallet);
         await restoreEncryptionState();
         await fetchUser();
@@ -143,8 +185,8 @@ export default function Login() {
   // ══════════════════════════════════════════
   // Email + Password Login
   // ══════════════════════════════════════════
-  const handleEmailLogin = async (e) => {
-    e.preventDefault();
+  const handleEmailLogin = async (e, totpOverride) => {
+    if (e) e.preventDefault();
     setError('');
     if (!email || !password) {
       setError('Email and password are required');
@@ -153,8 +195,15 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const res = await loginWithEmail({ email, password });
+      const res = await loginWithEmail({ email, password, totpCode: totpOverride || undefined });
       if (res.success) {
+        if (res.data?.requires2FA) {
+          setShow2FA(true);
+          setTotpCode('');
+          setPending2FALogin((code) => handleEmailLogin(null, code));
+          setLoading(false);
+          return;
+        }
         toast.success('Welcome back!');
         navigate('/chat');
       } else {
@@ -231,15 +280,22 @@ export default function Login() {
     setLoading(false);
   };
 
-  const handleVerifySms = async (e) => {
-    e.preventDefault();
+  const handleVerifySms = async (e, totpOverride) => {
+    if (e) e.preventDefault();
     setError('');
     if (!smsCode || smsCode.length !== 6) { setError('Enter the 6-digit code'); return; }
 
     setLoading(true);
     try {
-      const res = await loginWithPhone({ phone: phone.replace(/[\s()-]/g, ''), code: smsCode });
+      const res = await loginWithPhone({ phone: phone.replace(/[\s()-]/g, ''), code: smsCode, totpCode: totpOverride || undefined });
       if (res.success) {
+        if (res.data?.requires2FA) {
+          setShow2FA(true);
+          setTotpCode('');
+          setPending2FALogin(() => (code) => handleVerifySms(null, code));
+          setLoading(false);
+          return;
+        }
         toast.success('Welcome back!');
         navigate('/chat');
       } else {
@@ -625,6 +681,70 @@ export default function Login() {
             Create one
           </Link>
         </p>
+
+        {/* ── 2FA Overlay ── */}
+        <AnimatePresence>
+          {show2FA && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl space-y-4"
+              >
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-phantom-green/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <Shield className="w-6 h-6 text-phantom-green" />
+                  </div>
+                  <h3 className="text-lg font-bold text-phantom-charcoal">Two-Factor Authentication</h3>
+                  <p className="text-xs text-phantom-gray-400 mt-1">Enter the 6-digit code from your authenticator app</p>
+                </div>
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => { setTotpCode(e.target.value.replace(/\D/g, '')); setError(''); }}
+                  placeholder="000000"
+                  className="input-field text-center text-2xl font-mono tracking-[0.4em]"
+                  autoFocus
+                />
+
+                {error && (
+                  <p className="flex items-center justify-center gap-2 text-red-500 text-sm">
+                    <AlertCircle className="w-4 h-4" /> {error}
+                  </p>
+                )}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShow2FA(false); setTotpCode(''); setError(''); setPending2FALogin(null); }}
+                    className="flex-1 py-2.5 text-sm font-medium text-phantom-gray-500 bg-phantom-gray-50 hover:bg-phantom-gray-100 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (totpCode.length !== 6) { setError('Enter the 6-digit code'); return; }
+                      if (pending2FALogin) pending2FALogin(totpCode);
+                      setShow2FA(false);
+                    }}
+                    disabled={loading || totpCode.length !== 6}
+                    className="btn-primary flex-1"
+                  >
+                    {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : 'Verify'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </motion.div>
   );
