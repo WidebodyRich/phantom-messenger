@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, User, Bell, Shield, Palette, Info, LogOut, ChevronRight, Lock, Bitcoin, Copy, Check, Mail, Phone, Key, Eye, EyeOff, X, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { validatePassword } from '../utils/passwordValidation';
+import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
 import { loadWalletFromSession } from '../crypto/btcWallet';
 import { getPreKeyCount } from '../crypto/signalProtocol';
 import * as authApi from '../api/auth';
@@ -130,8 +132,9 @@ export default function Settings({ onBack }) {
   // ── Password Management ──
   const handleSavePassword = async () => {
     setPanelError('');
-    if (newPasswordInput.length < 8) {
-      setPanelError('Password must be at least 8 characters');
+    const pwErr = validatePassword(newPasswordInput);
+    if (pwErr) {
+      setPanelError(pwErr);
       return;
     }
     setLoading(true);
@@ -437,7 +440,7 @@ export default function Settings({ onBack }) {
                         type={showPassword ? 'text' : 'password'}
                         value={newPasswordInput}
                         onChange={(e) => { setNewPasswordInput(e.target.value); setPanelError(''); }}
-                        placeholder="Min 8 characters"
+                        placeholder="Min 12 chars, upper, lower, number, symbol"
                         className="input-field pr-10"
                         autoComplete="new-password"
                         autoFocus={!profile?.hasPassword}
@@ -450,6 +453,7 @@ export default function Settings({ onBack }) {
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    <PasswordStrengthIndicator password={newPasswordInput} />
                     <p className="mt-1 text-xs text-phantom-gray-400">Password enables email+password login</p>
                   </div>
                   {panelError && (

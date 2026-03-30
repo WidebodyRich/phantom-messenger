@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, ArrowRight, AlertCircle, CheckCircle2, Shield, Copy, Check, AlertTriangle, Mail, Phone, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { validatePassword } from '../utils/passwordValidation';
+import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
 import { generateWallet, saveWalletToSession } from '../crypto/btcWallet';
 import { initializeEncryption } from '../crypto/signalProtocol';
 import client from '../api/client';
@@ -35,7 +37,10 @@ export default function Register() {
     const nameErr = validateUsername(username.trim());
     if (nameErr) return nameErr;
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Invalid email address';
-    if (password && password.length < 8) return 'Password must be at least 8 characters';
+    if (password) {
+      const pwErr = validatePassword(password);
+      if (pwErr) return pwErr;
+    }
     if (email && !password) return 'Password required when adding an email';
     if (phone && !/^\+?[0-9]{10,15}$/.test(phone.replace(/[\s()-]/g, ''))) return 'Invalid phone number';
     return null;
@@ -258,7 +263,7 @@ export default function Register() {
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                            placeholder="Min 8 characters"
+                            placeholder="Min 12 chars, upper, lower, number, symbol"
                             className="input-field text-sm pr-10"
                             autoComplete="new-password"
                           />
@@ -270,6 +275,7 @@ export default function Register() {
                             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
+                        <PasswordStrengthIndicator password={password} />
                         {email && !password && (
                           <p className="mt-1 text-xs text-amber-500">Password required with email</p>
                         )}
