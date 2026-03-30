@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import { useAuth } from './AuthContext';
 import { getAccessToken } from '../api/client';
 import { WS_URL } from '../utils/constants';
+import * as authApi from '../api/auth';
 
 const SocketContext = createContext(null);
 
@@ -18,18 +19,58 @@ export function SocketProvider({ children }) {
     if (!token || !user) return;
 
     try {
-      const ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`);
+      // Connect without token in URL (auth-on-first-message pattern)
+      const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setConnected(true);
-        setReconnecting(false);
-        console.log('[WS] Connected');
+        // Send auth message immediately after connection opens
+        const currentToken = getAccessToken();
+        if (currentToken) {
+          ws.send(JSON.stringify({ type: 'auth', token: currentToken }));
+        } else {
+          ws.close(4001, 'No token');
+        }
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Handle auth responses
+          if (data.type === 'auth_ok') {
+            setConnected(true);
+            setReconnecting(false);
+            console.log('[WS] Authenticated');
+            return;
+          }
+
+          if (data.type === 'auth_failed') {
+            console.warn('[WS] Auth failed:', data.reason);
+            ws.close();
+            return;
+          }
+
+          // Handle periodic re-auth challenge from server
+          if (data.type === 'auth_required') {
+            (async () => {
+              try {
+                // Proactively refresh the access token first
+                await authApi.refreshAccessToken();
+                const freshToken = getAccessToken();
+                if (freshToken && ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'auth_renew', token: freshToken }));
+                  console.log('[WS] Re-auth sent');
+                }
+              } catch (err) {
+                console.error('[WS] Re-auth refresh failed:', err.message);
+                ws.close();
+              }
+            })();
+            return;
+          }
+
+          // Dispatch to registered listeners
           const handlers = listeners.current.get(data.type) || [];
           handlers.forEach((handler) => handler(data));
         } catch (err) {
