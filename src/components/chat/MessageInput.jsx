@@ -57,15 +57,19 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
       return;
     }
 
-    // Compress images for lightning-fast upload
-    if (file.type.startsWith('image/') && file.size > 500 * 1024) {
+    // PNGs — send lossless original, never compress
+    // Small images (<3MB) — send original quality
+    // Large images (>3MB) — light compression preserving quality (92%, 4K max)
+    // Videos — NEVER compress, send original
+    if (file.type.startsWith('image/') && file.type !== 'image/png' && file.size > 3 * 1024 * 1024) {
       try {
         const compressed = await imageCompression(file, {
-          maxSizeMB: 2,
-          maxWidthOrHeight: 2048,
+          maxSizeMB: 5,
+          maxWidthOrHeight: 4096,
           useWebWorker: true,
-          fileType: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-          initialQuality: 0.85,
+          fileType: file.type,
+          initialQuality: 0.92,
+          preserveExif: true,
         });
         console.log(`[Upload] Compressed: ${formatFileSize(file.size)} → ${formatFileSize(compressed.size)}`);
         setSelectedFile(new File([compressed], file.name, { type: compressed.type }));

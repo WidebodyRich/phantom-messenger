@@ -17,6 +17,7 @@ export function ChatProvider({ children }) {
   const [groups, setGroups] = useState([]);
   const [typingUsers, setTypingUsers] = useState({});
   const pollRef = useRef(null);
+  const pendingErrorCount = useRef(0);
   const encryptionReady = useRef(false);
 
   // Initialize encryption on mount
@@ -211,6 +212,7 @@ export function ChatProvider({ children }) {
     try {
       const res = await messagesApi.getPendingMessages();
       if (res.success && Array.isArray(res.data)) {
+        pendingErrorCount.current = 0; // Reset on success
         const newMsgs = res.data;
         if (newMsgs.length > 0) {
           console.log('[Chat] Received', newMsgs.length, 'pending messages:', JSON.stringify(newMsgs.map(m => ({ id: m.id, senderId: m.senderId, ciphertext: m.ciphertext?.substring(0, 60), messageType: m.messageType }))));
@@ -251,9 +253,13 @@ export function ChatProvider({ children }) {
         }
       }
     } catch (err) {
-      // Don't spam console for token expiry — client.js handles refresh
+      // Silence common non-actionable errors to avoid console spam
+      // Only log after 3+ consecutive failures
       if (err?.status !== 401) {
-        console.error('[Chat] Fetch pending error:', err?.message || err);
+        pendingErrorCount.current = (pendingErrorCount.current || 0) + 1;
+        if (pendingErrorCount.current >= 3 && pendingErrorCount.current % 10 === 0) {
+          console.warn('[Chat] Fetch pending error (repeated):', err?.message || err);
+        }
       }
     }
   }, [decryptReceivedMessage, checkPreKeys]);
