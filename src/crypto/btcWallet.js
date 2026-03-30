@@ -160,15 +160,15 @@ export function buildTransaction({ utxos, toAddress, amount, feeRate, changeAddr
 }
 
 /**
- * Encrypt wallet data for sessionStorage
+ * Encrypt wallet data for localStorage
  */
 export function encryptWalletData(walletData) {
-  // Simple obfuscation for sessionStorage (not true encryption — session-scoped)
+  // Simple obfuscation for localStorage (not true encryption)
   return btoa(JSON.stringify(walletData));
 }
 
 /**
- * Decrypt wallet data from sessionStorage
+ * Decrypt wallet data from localStorage
  */
 export function decryptWalletData(encoded) {
   try {
@@ -179,24 +179,24 @@ export function decryptWalletData(encoded) {
 }
 
 /**
- * Save wallet to sessionStorage
+ * Save wallet to localStorage
  */
 export function saveWalletToSession(wallet) {
-  sessionStorage.setItem('phantom_wallet', encryptWalletData(wallet));
+  localStorage.setItem('phantom_wallet', encryptWalletData(wallet));
 }
 
 /**
- * Load wallet from sessionStorage
+ * Load wallet from localStorage
  */
 export function loadWalletFromSession() {
-  const data = sessionStorage.getItem('phantom_wallet');
+  const data = localStorage.getItem('phantom_wallet');
   if (!data) return null;
   return decryptWalletData(data);
 }
 
 /**
- * Clear wallet from sessionStorage
+ * Clear wallet from localStorage
  */
 export function clearWalletFromSession() {
-  sessionStorage.removeItem('phantom_wallet');
+  localStorage.removeItem('phantom_wallet');
 }

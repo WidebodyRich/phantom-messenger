@@ -33,21 +33,21 @@ client.interceptors.response.use(
     if (status === 401 && accessToken) {
       // Try to refresh token
       try {
-        const refreshToken = sessionStorage.getItem('phantom_refresh');
+        const refreshToken = localStorage.getItem('phantom_refresh');
         if (refreshToken) {
           const res = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
           if (res.data?.success) {
             const newToken = res.data.data.accessToken;
             setAccessToken(newToken);
             if (res.data.data.refreshToken) {
-              sessionStorage.setItem('phantom_refresh', res.data.data.refreshToken);
+              localStorage.setItem('phantom_refresh', res.data.data.refreshToken);
             }
             error.config.headers.Authorization = `Bearer ${newToken}`;
             return axios(error.config).then((r) => r.data);
           }
         }
       } catch {
-        sessionStorage.removeItem('phantom_refresh');
+        localStorage.removeItem('phantom_refresh');
         setAccessToken(null);
         window.location.href = '/login';
       }

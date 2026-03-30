@@ -14,7 +14,7 @@ export async function register({ username, email, phone, password, identityKeyPu
   });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    sessionStorage.setItem('phantom_refresh', res.data.refreshToken);
+    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
@@ -31,7 +31,7 @@ export async function registerWithEmail({ username, emailHash, passwordHash, ide
   });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    sessionStorage.setItem('phantom_refresh', res.data.refreshToken);
+    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
@@ -45,7 +45,7 @@ export async function loginWithSeed({ username, challengeId, signature }) {
   const res = await client.post('/api/auth/login/seed', { username, challengeId, signature });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    sessionStorage.setItem('phantom_refresh', res.data.refreshToken);
+    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
@@ -55,7 +55,7 @@ export async function loginWithEmail({ email, password }) {
   const res = await client.post('/api/auth/login/email', { email, password });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    sessionStorage.setItem('phantom_refresh', res.data.refreshToken);
+    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
@@ -69,7 +69,7 @@ export async function verifyPhoneCode({ phone, code }) {
   const res = await client.post('/api/auth/login/phone/verify', { phone, code });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    sessionStorage.setItem('phantom_refresh', res.data.refreshToken);
+    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
@@ -118,18 +118,18 @@ export async function logout() {
     await client.post('/api/auth/logout');
   } finally {
     setAccessToken(null);
-    sessionStorage.removeItem('phantom_refresh');
+    localStorage.removeItem('phantom_refresh');
   }
 }
 
 export async function refreshAccessToken() {
-  const refreshToken = sessionStorage.getItem('phantom_refresh');
+  const refreshToken = localStorage.getItem('phantom_refresh');
   if (!refreshToken) throw new Error('No refresh token');
   const res = await client.post('/api/auth/refresh', { refreshToken });
   if (res.success) {
     setAccessToken(res.data.accessToken);
     if (res.data.refreshToken) {
-      sessionStorage.setItem('phantom_refresh', res.data.refreshToken);
+      localStorage.setItem('phantom_refresh', res.data.refreshToken);
     }
   }
   return res;

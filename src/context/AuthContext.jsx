@@ -23,7 +23,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const init = async () => {
-      const refreshToken = sessionStorage.getItem('phantom_refresh');
+      const refreshToken = localStorage.getItem('phantom_refresh');
       if (refreshToken) {
         try {
           await authApi.refreshAccessToken();
@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
           // Restore Signal Protocol state
           await restoreEncryptionState();
         } catch {
-          sessionStorage.removeItem('phantom_refresh');
+          localStorage.removeItem('phantom_refresh');
         }
       }
       setLoading(false);

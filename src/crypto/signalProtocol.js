@@ -181,7 +181,7 @@ export async function initializeEncryption() {
   const identityKeyPublic = await exportPublicKey(identityKeyPair.publicKey);
   const signedPreKeyPublic = await exportPublicKey(signedPreKeyPair.publicKey);
 
-  // Persist to sessionStorage
+  // Persist to localStorage
   await persistStore();
 
   return {
@@ -199,11 +199,11 @@ export async function initializeEncryption() {
 }
 
 /**
- * Restore encryption state from sessionStorage
+ * Restore encryption state from localStorage
  */
 export async function restoreEncryptionState() {
   try {
-    const data = sessionStorage.getItem(STORE_KEY);
+    const data = localStorage.getItem(STORE_KEY);
     if (!data) return false;
     const parsed = JSON.parse(data);
 
@@ -253,7 +253,7 @@ export async function restoreEncryptionState() {
 }
 
 /**
- * Persist store to sessionStorage
+ * Persist store to localStorage
  */
 async function persistStore() {
   try {
@@ -296,7 +296,7 @@ async function persistStore() {
       };
     }
 
-    sessionStorage.setItem(STORE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
   } catch (err) {
     console.warn('[Signal] Failed to persist:', err.message);
   }
@@ -490,5 +490,5 @@ export function clearEncryptionState() {
   store.preKeys.clear();
   store.sessions.clear();
   store.identityKeys.clear();
-  sessionStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(STORE_KEY);
 }

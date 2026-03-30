@@ -35,7 +35,7 @@ export default function Sidebar() {
       <div className="px-5 pt-5 pb-3">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <PhantomLogo size={36} />
+            <PhantomLogo size={48} />
             <h1 className="text-xl font-bold text-phantom-green">Phantom</h1>
           </div>
           <div className="flex items-center gap-1">

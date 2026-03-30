@@ -1,7 +1,7 @@
 /**
  * Signal Protocol In-Memory Store
  * Implements all required storage interfaces for libsignal-protocol
- * Persists to sessionStorage for tab persistence
+ * Persists to localStorage for session persistence across browser restarts
  */
 
 const STORAGE_KEY = 'phantom_signal_store';
@@ -60,7 +60,7 @@ export default class SignalProtocolStore {
           serializable[key] = value;
         }
       }
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
     } catch (e) {
       console.warn('[Signal Store] Failed to persist:', e.message);
     }
@@ -68,7 +68,7 @@ export default class SignalProtocolStore {
 
   _load() {
     try {
-      const data = sessionStorage.getItem(STORAGE_KEY);
+      const data = localStorage.getItem(STORAGE_KEY);
       if (!data) return;
       const parsed = JSON.parse(data);
       for (const [key, value] of Object.entries(parsed)) {
@@ -246,6 +246,6 @@ export default class SignalProtocolStore {
   // Helper: clear everything
   clearAll() {
     this._store = {};
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
   }
 }
