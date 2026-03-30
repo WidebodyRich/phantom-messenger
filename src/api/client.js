@@ -7,49 +7,74 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-let accessToken = null;
+const ACCESS_TOKEN_KEY = 'phantom_access';
 
 export function setAccessToken(token) {
-  accessToken = token;
+  if (token) {
+    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+  }
 }
 
 export function getAccessToken() {
-  return accessToken;
+  return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
 client.interceptors.request.use((config) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+// Track if a refresh is already in progress (prevent parallel refresh races)
+let refreshPromise = null;
 
 client.interceptors.response.use(
   (response) => response.data,
   async (error) => {
     const status = error.response?.status;
     const data = error.response?.data;
+    const originalRequest = error.config;
 
-    if (status === 401 && accessToken) {
-      // Try to refresh token
-      try {
-        const refreshToken = localStorage.getItem('phantom_refresh');
-        if (refreshToken) {
-          const res = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
-          if (res.data?.success) {
-            const newToken = res.data.data.accessToken;
-            setAccessToken(newToken);
-            if (res.data.data.refreshToken) {
-              localStorage.setItem('phantom_refresh', res.data.data.refreshToken);
+    if (status === 401 && getAccessToken() && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      // Deduplicate concurrent refresh attempts
+      if (!refreshPromise) {
+        refreshPromise = (async () => {
+          try {
+            const refreshToken = localStorage.getItem('phantom_refresh');
+            if (!refreshToken) throw new Error('No refresh token');
+
+            const res = await axios.post(`${API_URL}/api/auth/refresh`, { refreshToken });
+            if (res.data?.success) {
+              setAccessToken(res.data.data.accessToken);
+              if (res.data.data.refreshToken) {
+                localStorage.setItem('phantom_refresh', res.data.data.refreshToken);
+              }
+              return res.data.data.accessToken;
             }
-            error.config.headers.Authorization = `Bearer ${newToken}`;
-            return axios(error.config).then((r) => r.data);
+            throw new Error('Refresh failed');
+          } catch (err) {
+            localStorage.removeItem('phantom_refresh');
+            setAccessToken(null);
+            window.location.href = '/login';
+            throw err;
+          } finally {
+            refreshPromise = null;
           }
-        }
+        })();
+      }
+
+      try {
+        const newToken = await refreshPromise;
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return axios(originalRequest).then((r) => r.data);
       } catch {
-        localStorage.removeItem('phantom_refresh');
-        setAccessToken(null);
-        window.location.href = '/login';
+        return Promise.reject(error);
       }
     }
 

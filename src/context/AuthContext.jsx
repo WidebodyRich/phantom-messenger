@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { setAccessToken } from '../api/client';
 import * as authApi from '../api/auth';
 import { restoreEncryptionState, clearEncryptionState } from '../crypto/signalProtocol';
@@ -38,6 +38,45 @@ export function AuthProvider({ children }) {
     };
     init();
   }, [fetchUser]);
+
+  // Proactive token refresh — fires every 10 minutes (before 15-min access token expires)
+  // Also refreshes when the page regains visibility (mobile tab wakeup)
+  useEffect(() => {
+    if (!user) return;
+
+    const REFRESH_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+    const refreshTimer = setInterval(async () => {
+      try {
+        await authApi.refreshAccessToken();
+        console.log('[Auth] Proactive token refresh OK');
+      } catch (err) {
+        console.warn('[Auth] Proactive refresh failed:', err.message);
+      }
+    }, REFRESH_INTERVAL);
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && user) {
+        try {
+          await authApi.refreshAccessToken();
+          console.log('[Auth] Visibility-triggered refresh OK');
+        } catch (err) {
+          console.warn('[Auth] Visibility refresh failed:', err.message);
+          // If refresh fails completely, force logout
+          localStorage.removeItem('phantom_refresh');
+          setAccessToken(null);
+          setUser(null);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(refreshTimer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user]);
 
   // Unified register — works for all auth methods
   const register = async (data) => {
