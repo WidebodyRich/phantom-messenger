@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, AlertCircle, CheckCircle2, ExternalLink, Zap, Clock, Turtle } from 'lucide-react';
 import { getUTXOs, broadcastTransaction, getFeeEstimate, getTxUrl } from '../../api/bitcoin';
-import { buildTransaction, isValidTestnetAddress } from '../../crypto/btcWallet';
+import { buildTransaction, isValidAddress } from '../../crypto/btcWallet';
+import { getAddressPlaceholder, isMainnet } from '../../crypto/btcNetwork';
 import { formatBTC, formatUSD } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
@@ -29,7 +30,7 @@ export default function SendBTC({ wallet, balance, btcPrice, onBack }) {
   const handleReview = async () => {
     setError('');
     if (!toAddress.trim()) { setError('Enter a recipient address'); return; }
-    if (!isValidTestnetAddress(toAddress.trim())) { setError('Invalid Bitcoin testnet address'); return; }
+    if (!isValidAddress(toAddress.trim())) { setError(`Invalid Bitcoin ${isMainnet() ? 'mainnet' : 'testnet'} address`); return; }
     if (satoshis <= 0) { setError('Enter a valid amount'); return; }
     if (satoshis + estimatedFee > balance.total) { setError('Insufficient funds'); return; }
     try { const f = await getFeeEstimate(); setFees(f); } catch {}
@@ -77,7 +78,7 @@ export default function SendBTC({ wallet, balance, btcPrice, onBack }) {
               <div>
                 <label className="block text-sm font-medium text-phantom-charcoal mb-2">Recipient Address</label>
                 <input type="text" value={toAddress} onChange={(e) => { setToAddress(e.target.value); setError(''); }}
-                  placeholder="tb1q..." className="input-field font-mono text-sm" spellCheck={false} />
+                  placeholder={getAddressPlaceholder()} className="input-field font-mono text-sm" spellCheck={false} />
               </div>
               <div>
                 <div className="flex items-center justify-between mb-2">

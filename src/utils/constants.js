@@ -14,5 +14,6 @@ export const TIERS = {
 };
 
 export const MESSAGE_POLL_INTERVAL = 5000;
+// Legacy — use getBlockstreamBase() from crypto/btcNetwork.js instead
 export const BLOCKSTREAM_TESTNET_API = 'https://blockstream.info/testnet/api';
 export const COINGECKO_API = 'https://api.coingecko.com/api/v3';

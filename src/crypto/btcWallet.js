@@ -1,6 +1,6 @@
 /**
- * Bitcoin HD Wallet (Testnet)
- * BIP39 Mnemonic -> BIP84 Native SegWit (tb1...) derivation
+ * Bitcoin HD Wallet (Mainnet / Testnet)
+ * BIP39 Mnemonic -> BIP84 Native SegWit derivation
  * Full non-custodial wallet with transaction building
  */
 import * as bip39 from 'bip39';
@@ -8,13 +8,13 @@ import BIP32Factory from 'bip32';
 import * as ecc from 'tiny-secp256k1';
 import * as bitcoin from 'bitcoinjs-lib';
 import { ECPairFactory } from 'ecpair';
+import { getNetworkObj, getDerivationPath } from './btcNetwork';
 
 const bip32 = BIP32Factory(ecc);
 const ECPair = ECPairFactory(ecc);
-const network = bitcoin.networks.testnet;
 
 /**
- * Generate a new HD wallet (BIP84 native SegWit, testnet)
+ * Generate a new HD wallet (BIP84 native SegWit)
  */
 export function generateWallet() {
   const mnemonic = bip39.generateMnemonic(128);
@@ -36,10 +36,10 @@ export function restoreWalletFromMnemonic(mnemonic) {
  * Derive wallet keys from mnemonic
  */
 function deriveWalletFromMnemonic(mnemonic) {
+  const network = getNetworkObj();
   const seed = bip39.mnemonicToSeedSync(mnemonic);
   const root = bip32.fromSeed(seed, network);
-  // BIP84 path for testnet native SegWit: m/84'/1'/0'/0/0
-  const path = "m/84'/1'/0'/0/0";
+  const path = getDerivationPath();
   const child = root.derivePath(path);
 
   const { address } = bitcoin.payments.p2wpkh({
@@ -56,16 +56,19 @@ function deriveWalletFromMnemonic(mnemonic) {
 }
 
 /**
- * Validate a Bitcoin testnet address
+ * Validate a Bitcoin address for the current network
  */
-export function isValidTestnetAddress(addr) {
+export function isValidAddress(addr) {
   try {
-    bitcoin.address.toOutputScript(addr, network);
+    bitcoin.address.toOutputScript(addr, getNetworkObj());
     return true;
   } catch {
     return false;
   }
 }
+
+// Backward-compatible alias
+export const isValidTestnetAddress = isValidAddress;
 
 /**
  * Build and sign a Bitcoin transaction
@@ -79,6 +82,7 @@ export function isValidTestnetAddress(addr) {
  * @returns {string} Raw transaction hex ready to broadcast
  */
 export function buildTransaction({ utxos, toAddress, amount, feeRate, changeAddress, privateKeyWIF }) {
+  const network = getNetworkObj();
   const keyPair = ECPair.fromWIF(privateKeyWIF, network);
   const psbt = new bitcoin.Psbt({ network });
 

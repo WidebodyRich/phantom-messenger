@@ -1,5 +1,6 @@
 import client from './client';
-import { BLOCKSTREAM_TESTNET_API, COINGECKO_API } from '../utils/constants';
+import { COINGECKO_API } from '../utils/constants';
+import { getBlockstreamBase } from '../crypto/btcNetwork';
 import axios from 'axios';
 
 export async function getWalletBalance() {
@@ -18,27 +19,27 @@ export async function getBTCPrice() {
   return client.get('/api/subscription/btc-price');
 }
 
-// Blockstream testnet API (client-side, no auth needed)
+// Blockstream API (client-side, no auth needed — uses current network)
 export async function getAddressBalance(address) {
-  const res = await axios.get(`${BLOCKSTREAM_TESTNET_API}/address/${address}`);
+  const res = await axios.get(`${getBlockstreamBase()}/address/${address}`);
   const { funded_txo_sum, spent_txo_sum } = res.data.chain_stats;
   return { confirmed: funded_txo_sum - spent_txo_sum };
 }
 
 export async function getAddressTransactions(address) {
-  const res = await axios.get(`${BLOCKSTREAM_TESTNET_API}/address/${address}/txs`);
+  const res = await axios.get(`${getBlockstreamBase()}/address/${address}/txs`);
   return res.data;
 }
 
 export async function broadcastTransaction(txHex) {
-  const res = await axios.post(`${BLOCKSTREAM_TESTNET_API}/tx`, txHex, {
+  const res = await axios.post(`${getBlockstreamBase()}/tx`, txHex, {
     headers: { 'Content-Type': 'text/plain' },
   });
   return res.data; // returns txid
 }
 
 export async function getUTXOs(address) {
-  const res = await axios.get(`${BLOCKSTREAM_TESTNET_API}/address/${address}/utxo`);
+  const res = await axios.get(`${getBlockstreamBase()}/address/${address}/utxo`);
   return res.data;
 }
 
@@ -53,7 +54,7 @@ export async function getBTCPriceUSD() {
 
 export async function getFeeEstimates() {
   try {
-    const res = await axios.get(`${BLOCKSTREAM_TESTNET_API}/fee-estimates`);
+    const res = await axios.get(`${getBlockstreamBase()}/fee-estimates`);
     return {
       fast: Math.ceil(res.data['1'] || 20),
       medium: Math.ceil(res.data['6'] || 10),

@@ -7,6 +7,7 @@ import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
 import TwoFactorSetup from '../components/TwoFactorSetup';
 import DuressPinSetup from '../components/DuressPinSetup';
 import BackupRestore from '../components/BackupRestore';
+import { getBtcNetwork, setBtcNetwork, getNetworkLabel, isMainnet } from '../crypto/btcNetwork';
 import { loadWalletFromSession, clearWalletFromSession } from '../crypto/btcWallet';
 import { clearEncryptionState } from '../crypto/signalProtocol';
 import { lockVault } from '../crypto/vault';
@@ -34,6 +35,7 @@ export default function Settings({ onBack }) {
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [showPanicConfirm, setShowPanicConfirm] = useState(false);
   const [panicCountdown, setPanicCountdown] = useState(0);
+  const [btcNet, setBtcNet] = useState(getBtcNetwork);
 
   useEffect(() => {
     loadProfile();
@@ -306,13 +308,31 @@ export default function Settings({ onBack }) {
             <div className="flex items-center gap-2 mb-2">
               <Bitcoin className="w-4 h-4 text-amber-500" />
               <span className="text-sm font-semibold text-phantom-charcoal">Bitcoin Wallet</span>
-              <span className="bg-amber-200/50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto">TESTNET</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto ${btcNet === 'mainnet' ? 'bg-red-100 text-red-600' : 'bg-amber-200/50 text-amber-700'}`}>{getNetworkLabel()}</span>
             </div>
             <div className="flex items-center gap-2">
               <p className="text-xs font-mono text-phantom-gray-500 truncate flex-1">{wallet.address}</p>
               <button onClick={handleCopyAddress} className="p-1.5 hover:bg-amber-100 rounded-lg transition-colors">
                 {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5 text-amber-500" />}
               </button>
+            </div>
+            {/* Network Toggle */}
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-amber-200/50">
+              <span className="text-xs text-phantom-gray-500 flex-1">Bitcoin Network</span>
+              <button
+                onClick={() => {
+                  const next = btcNet === 'testnet' ? 'mainnet' : 'testnet';
+                  setBtcNetwork(next);
+                  setBtcNet(next);
+                  toast.success(`Switched to ${next}. Wallet address will change on next login.`);
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${btcNet === 'mainnet' ? 'bg-red-500' : 'bg-phantom-gray-200'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${btcNet === 'mainnet' ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+              <span className={`text-[10px] font-bold ${btcNet === 'mainnet' ? 'text-red-500' : 'text-phantom-gray-400'}`}>
+                {btcNet === 'mainnet' ? 'MAINNET' : 'TESTNET'}
+              </span>
             </div>
           </div>
         )}

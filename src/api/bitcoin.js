@@ -1,12 +1,11 @@
 /**
- * Bitcoin Blockchain API (Blockstream Testnet)
- * No API key required for testnet
+ * Bitcoin Blockchain API (Blockstream — Mainnet / Testnet)
+ * No API key required
  */
-
-const BLOCKSTREAM_BASE = 'https://blockstream.info/testnet/api';
+import { getBlockstreamBase, getExplorerTxUrl, getExplorerAddressUrl } from '../crypto/btcNetwork';
 
 export async function getBalance(address) {
-  const res = await fetch(`${BLOCKSTREAM_BASE}/address/${address}`);
+  const res = await fetch(`${getBlockstreamBase()}/address/${address}`);
   if (!res.ok) throw new Error('Failed to fetch balance');
   const data = await res.json();
   const confirmed = data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum;
@@ -20,19 +19,19 @@ export async function getBalance(address) {
 }
 
 export async function getTransactions(address) {
-  const res = await fetch(`${BLOCKSTREAM_BASE}/address/${address}/txs`);
+  const res = await fetch(`${getBlockstreamBase()}/address/${address}/txs`);
   if (!res.ok) throw new Error('Failed to fetch transactions');
   return await res.json();
 }
 
 export async function getUTXOs(address) {
-  const res = await fetch(`${BLOCKSTREAM_BASE}/address/${address}/utxo`);
+  const res = await fetch(`${getBlockstreamBase()}/address/${address}/utxo`);
   if (!res.ok) throw new Error('Failed to fetch UTXOs');
   return await res.json();
 }
 
 export async function broadcastTransaction(txHex) {
-  const res = await fetch(`${BLOCKSTREAM_BASE}/tx`, {
+  const res = await fetch(`${getBlockstreamBase()}/tx`, {
     method: 'POST',
     body: txHex,
   });
@@ -41,10 +40,9 @@ export async function broadcastTransaction(txHex) {
 }
 
 export async function getFeeEstimate() {
-  const res = await fetch(`${BLOCKSTREAM_BASE}/fee-estimates`);
-  if (!res.ok) return { '1': 2, '3': 1, '6': 1 }; // fallback for testnet
+  const res = await fetch(`${getBlockstreamBase()}/fee-estimates`);
+  if (!res.ok) return { '1': 2, '3': 1, '6': 1 }; // fallback
   const data = await res.json();
-  // Testnet fees are very low, set minimums
   return {
     high: Math.max(data['1'] || 2, 1),
     medium: Math.max(data['3'] || 1, 1),
@@ -64,9 +62,9 @@ export async function getBtcPrice() {
 }
 
 export function getTxUrl(txid) {
-  return `https://blockstream.info/testnet/tx/${txid}`;
+  return getExplorerTxUrl(txid);
 }
 
 export function getAddressUrl(address) {
-  return `https://blockstream.info/testnet/address/${address}`;
+  return getExplorerAddressUrl(address);
 }

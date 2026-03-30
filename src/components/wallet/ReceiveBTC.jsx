@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Copy, Check, ExternalLink } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { getAddressUrl } from '../../api/bitcoin';
+import { getNetworkLabel, isMainnet } from '../../crypto/btcNetwork';
 import toast from 'react-hot-toast';
 
 export default function ReceiveBTC({ address, onBack }) {
@@ -54,7 +55,7 @@ export default function ReceiveBTC({ address, onBack }) {
 
           {/* Address */}
           <div className="w-full bg-phantom-gray-50 rounded-xl p-4 mb-4">
-            <p className="text-xs text-phantom-gray-400 mb-2 text-center">Your Bitcoin Testnet Address</p>
+            <p className="text-xs text-phantom-gray-400 mb-2 text-center">Your Bitcoin {getNetworkLabel()} Address</p>
             <p className="text-sm font-mono text-phantom-charcoal text-center break-all leading-relaxed">
               {address}
             </p>
@@ -77,14 +78,22 @@ export default function ReceiveBTC({ address, onBack }) {
           </div>
 
           {/* Info */}
-          <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <p className="text-xs text-amber-800 leading-relaxed">
-              <span className="font-semibold">Testnet Only:</span> This address is for Bitcoin testnet. Do not send real Bitcoin to this address. Get free testnet BTC from a{' '}
-              <a href="https://coinfaucet.eu/en/btc-testnet/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
-                faucet
-              </a>.
-            </p>
-          </div>
+          {!isMainnet() ? (
+            <div className="w-full bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <p className="text-xs text-amber-800 leading-relaxed">
+                <span className="font-semibold">Testnet Only:</span> This address is for Bitcoin testnet. Do not send real Bitcoin to this address. Get free testnet BTC from a{' '}
+                <a href="https://coinfaucet.eu/en/btc-testnet/" target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                  faucet
+                </a>.
+              </p>
+            </div>
+          ) : (
+            <div className="w-full bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-xs text-red-800 leading-relaxed">
+                <span className="font-semibold">Mainnet:</span> This is a real Bitcoin address. Only send actual BTC here — transactions are irreversible.
+              </p>
+            </div>
+          )}
 
           {/* Block Explorer Link */}
           <a
