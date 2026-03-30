@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, User, Bell, Shield, Palette, Info, LogOut, ChevronRight, Lock, Bitcoin, Copy, Check, Mail, Phone, Key, Eye, EyeOff, X, AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Bell, Shield, Palette, Info, LogOut, ChevronRight, Lock, Bitcoin, Copy, Check, Mail, Phone, Key, Eye, EyeOff, X, AlertCircle, CheckCircle2, Trash2, AlertTriangle, Flame } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { validatePassword } from '../utils/passwordValidation';
 import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
 import TwoFactorSetup from '../components/TwoFactorSetup';
-import { loadWalletFromSession } from '../crypto/btcWallet';
+import { loadWalletFromSession, clearWalletFromSession } from '../crypto/btcWallet';
+import { clearEncryptionState } from '../crypto/signalProtocol';
+import { lockVault } from '../crypto/vault';
 import { getPreKeyCount } from '../crypto/signalProtocol';
 import * as authApi from '../api/auth';
 import { useNavigate } from 'react-router-dom';
@@ -28,6 +30,8 @@ export default function Settings({ onBack }) {
   const [showPassword, setShowPassword] = useState(false);
   const [panelError, setPanelError] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
+  const [showPanicConfirm, setShowPanicConfirm] = useState(false);
+  const [panicCountdown, setPanicCountdown] = useState(0);
 
   useEffect(() => {
     loadProfile();
@@ -49,6 +53,41 @@ export default function Settings({ onBack }) {
   const handleLogout = async () => {
     await logout();
     navigate('/');
+  };
+
+  const handlePanic = async () => {
+    // Wipe ALL local data
+    clearEncryptionState();       // Signal Protocol keys + sessions
+    clearWalletFromSession();     // BTC wallet
+    lockVault();                  // Wipe vault key from memory
+
+    // Clear all app localStorage (messages, contacts, settings)
+    const keysToRemove = [];
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+
+    // Clear sessionStorage
+    sessionStorage.clear();
+
+    // Logout (clears server refresh token + httpOnly cookie)
+    try { await logout(); } catch {}
+
+    // Hard redirect to landing
+    window.location.href = '/';
+  };
+
+  const startPanicCountdown = () => {
+    setShowPanicConfirm(true);
+    setPanicCountdown(5);
+    const timer = setInterval(() => {
+      setPanicCountdown(prev => {
+        if (prev <= 1) { clearInterval(timer); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   const handleCopyAddress = () => {
@@ -310,6 +349,17 @@ export default function Settings({ onBack }) {
           </div>
         ))}
 
+        {/* Panic Button */}
+        <button onClick={startPanicCountdown} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left border border-red-200">
+          <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center">
+            <Flame className="w-4 h-4 text-red-600" />
+          </div>
+          <div className="flex-1">
+            <span className="text-sm font-medium text-red-600">Panic Wipe</span>
+            <p className="text-[11px] text-red-400">Destroy all local data instantly</p>
+          </div>
+        </button>
+
         {/* Logout */}
         <button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 transition-colors text-left group">
           <div className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center">
@@ -480,6 +530,62 @@ export default function Settings({ onBack }) {
                   </button>
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Panic Confirmation Modal */}
+      <AnimatePresence>
+        {showPanicConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-6"
+            onClick={() => setShowPanicConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <AlertTriangle className="w-7 h-7 text-red-600" />
+                </div>
+                <h3 className="text-lg font-bold text-phantom-charcoal">Emergency Wipe</h3>
+                <p className="text-xs text-phantom-gray-400 mt-2 leading-relaxed">
+                  This will <strong className="text-red-600">permanently destroy</strong> all local data:
+                </p>
+                <ul className="text-xs text-phantom-gray-500 mt-2 space-y-1 text-left px-4">
+                  <li>All encryption keys and sessions</li>
+                  <li>Bitcoin wallet data</li>
+                  <li>Message history and contacts</li>
+                  <li>All app settings and cached data</li>
+                </ul>
+                <p className="text-xs text-red-500 font-medium mt-3">
+                  This cannot be undone. You will need your recovery phrase to log back in.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowPanicConfirm(false)}
+                  className="flex-1 py-2.5 text-sm font-medium text-phantom-gray-500 bg-phantom-gray-50 hover:bg-phantom-gray-100 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { setShowPanicConfirm(false); handlePanic(); }}
+                  disabled={panicCountdown > 0}
+                  className="flex-1 py-2.5 text-sm font-bold text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 rounded-xl transition-colors"
+                >
+                  {panicCountdown > 0 ? `Wipe All (${panicCountdown}s)` : 'Wipe All Data'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
