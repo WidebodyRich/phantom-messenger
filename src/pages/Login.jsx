@@ -4,10 +4,25 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, ArrowRight, AlertCircle, Key, Mail, Phone, Eye, EyeOff, ArrowLeft, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { restoreWalletFromMnemonic, saveWalletToSession } from '../crypto/btcWallet';
-import { restoreEncryptionState } from '../crypto/signalProtocol';
-import { unlockVault, migrateToVault } from '../crypto/vault';
+import { restoreEncryptionState, clearEncryptionState } from '../crypto/signalProtocol';
+import { unlockVault, migrateToVault, lockVault } from '../crypto/vault';
+import { clearWalletFromSession } from '../crypto/btcWallet';
 import * as authApi from '../api/auth';
 import toast from 'react-hot-toast';
+
+// Silent duress wipe — destroys all local crypto material while appearing normal
+const performDuressWipe = async () => {
+  clearEncryptionState();
+  clearWalletFromSession();
+  lockVault();
+  const keysToRemove = [];
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k) keysToRemove.push(k);
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+  sessionStorage.clear();
+};
 
 const TABS = [
   { id: 'seed', label: 'Recovery Phrase', icon: Key, recommended: true },
@@ -206,6 +221,10 @@ export default function Login() {
           setPending2FALogin((code) => handleEmailLogin(null, code));
           setLoading(false);
           return;
+        }
+        // If server flagged this as a duress login, silently wipe all local data
+        if (res.data?.fresh) {
+          await performDuressWipe();
         }
         toast.success('Welcome back!');
         navigate('/chat');

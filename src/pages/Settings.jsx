@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { validatePassword } from '../utils/passwordValidation';
 import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
 import TwoFactorSetup from '../components/TwoFactorSetup';
+import DuressPinSetup from '../components/DuressPinSetup';
 import { loadWalletFromSession, clearWalletFromSession } from '../crypto/btcWallet';
 import { clearEncryptionState } from '../crypto/signalProtocol';
 import { lockVault } from '../crypto/vault';
@@ -319,6 +320,12 @@ export default function Settings({ onBack }) {
         <div>
           <h3 className="text-xs font-semibold text-phantom-gray-400 uppercase tracking-wider mb-2 px-1">Two-Factor Auth</h3>
           <TwoFactorSetup enabled={totpEnabled} onStatusChange={setTotpEnabled} />
+        </div>
+
+        {/* Duress PIN */}
+        <div>
+          <h3 className="text-xs font-semibold text-phantom-gray-400 uppercase tracking-wider mb-2 px-1">Duress PIN</h3>
+          <DuressPinSetup />
         </div>
 
         {/* Settings Sections */}
