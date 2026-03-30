@@ -1,27 +1,34 @@
 /**
- * Signal Protocol Implementation
- * X3DH Key Agreement + Double Ratchet
+ * Signal Protocol Implementation — PHANTOM MESSENGER v3.0
+ * X3DH Key Agreement + Double Ratchet (Bidirectional)
  *
  * Implements the Signal Protocol specification using Web Crypto API:
  * - X3DH: https://signal.org/docs/specifications/x3dh/
  * - Double Ratchet: https://signal.org/docs/specifications/doubleratchet/
  *
- * Uses Curve25519 (via ECDH P-256 as browser substitute), HKDF, AES-256-GCM
+ * Uses ECDH P-256 (browser substitute for Curve25519), HKDF, AES-256-GCM
+ *
+ * Message types:
+ *   type 3 = PreKeyMessage (first message, includes X3DH init data)
+ *   type 1 = SignalMessage (subsequent messages, just encrypted body)
  */
 
 const ALGO = { name: 'ECDH', namedCurve: 'P-256' };
 const AES_ALGO = 'AES-GCM';
 const HKDF_HASH = 'SHA-256';
+const PREKEY_MSG = 3;
+const SIGNAL_MSG = 1;
 
 // In-memory session and key store
 const store = {
-  identityKeyPair: null,
-  signedPreKey: null,
+  identityKeyPair: null,     // { publicKey, privateKey } — long-term ECDH
+  signingKeyPair: null,      // { publicKey, privateKey } — ECDSA for signing
+  signedPreKey: null,        // { publicKey, privateKey } — medium-term
   signedPreKeySignature: null,
   registrationId: 0,
-  preKeys: new Map(), // keyId -> { publicKey, privateKey }
-  sessions: new Map(), // userId -> session state
-  identityKeys: new Map(), // userId -> their public identity key
+  preKeys: new Map(),        // keyIndex -> { publicKey, privateKey }
+  sessions: new Map(),       // recipientUserId -> session state
+  identityKeys: new Map(),   // recipientUserId -> their public identity key (CryptoKey)
 };
 
 // Persistence key
@@ -47,6 +54,26 @@ async function exportPrivateKey(key) {
 async function importPrivateKey(jwkStr) {
   const jwk = JSON.parse(jwkStr);
   return crypto.subtle.importKey('jwk', jwk, ALGO, true, ['deriveBits']);
+}
+
+async function exportSigningPrivateKey(key) {
+  const jwk = await crypto.subtle.exportKey('jwk', key);
+  return JSON.stringify(jwk);
+}
+
+async function importSigningPrivateKey(jwkStr) {
+  const jwk = JSON.parse(jwkStr);
+  return crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign']);
+}
+
+async function exportSigningPublicKey(key) {
+  const raw = await crypto.subtle.exportKey('raw', key);
+  return btoa(String.fromCharCode(...new Uint8Array(raw)));
+}
+
+async function importSigningPublicKey(b64) {
+  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey('raw', raw, { name: 'ECDSA', namedCurve: 'P-256' }, true, ['verify']);
 }
 
 function arrayBufferToBase64(buf) {
@@ -144,21 +171,22 @@ async function sign(privateKey, data) {
   return arrayBufferToBase64(sig);
 }
 
-// ============ X3DH Key Agreement ============
+// ============ INITIALIZATION ============
 
 /**
  * Initialize encryption — called during registration
  * Generates Identity Key, Signed Pre-Key, and One-Time Pre-Keys
  */
 export async function initializeEncryption() {
-  // Identity Key Pair (long-term)
+  // Identity Key Pair (long-term ECDH for X3DH)
   const identityKeyPair = await generateKeyPair();
   const signingKeyPair = await generateSigningKeyPair();
 
   store.identityKeyPair = identityKeyPair;
+  store.signingKeyPair = signingKeyPair;
   store.registrationId = crypto.getRandomValues(new Uint32Array(1))[0] & 0x3FFF;
 
-  // Signed Pre-Key
+  // Signed Pre-Key (medium-term)
   const signedPreKeyPair = await generateKeyPair();
   const spkPub = await crypto.subtle.exportKey('raw', signedPreKeyPair.publicKey);
   const signature = await sign(signingKeyPair.privateKey, spkPub);
@@ -184,6 +212,8 @@ export async function initializeEncryption() {
   // Persist to localStorage
   await persistStore();
 
+  console.log('[Signal] Encryption initialized — 100 pre-keys generated');
+
   return {
     registrationId: store.registrationId,
     identityKeyPublic,
@@ -198,6 +228,8 @@ export async function initializeEncryption() {
   };
 }
 
+// ============ PERSISTENCE ============
+
 /**
  * Restore encryption state from localStorage
  */
@@ -211,6 +243,12 @@ export async function restoreEncryptionState() {
       store.identityKeyPair = {
         publicKey: await importPublicKey(parsed.identityKeyPair.pub),
         privateKey: await importPrivateKey(parsed.identityKeyPair.priv),
+      };
+    }
+    if (parsed.signingKeyPair) {
+      store.signingKeyPair = {
+        publicKey: await importSigningPublicKey(parsed.signingKeyPair.pub),
+        privateKey: await importSigningPrivateKey(parsed.signingKeyPair.priv),
       };
     }
     if (parsed.signedPreKey) {
@@ -232,19 +270,29 @@ export async function restoreEncryptionState() {
       }
     }
 
-    // Restore sessions (these contain derived symmetric keys)
+    // Restore sessions
     if (parsed.sessions) {
       for (const [userId, sess] of Object.entries(parsed.sessions)) {
         store.sessions.set(userId, {
+          rootKey: base64ToArrayBuffer(sess.rootKey),
           sendingKey: base64ToArrayBuffer(sess.sendingKey),
           receivingKey: base64ToArrayBuffer(sess.receivingKey),
           sendCount: sess.sendCount || 0,
           recvCount: sess.recvCount || 0,
-          rootKey: base64ToArrayBuffer(sess.rootKey),
         });
       }
     }
 
+    // Restore identity keys
+    if (parsed.identityKeys) {
+      for (const [userId, ikPub] of Object.entries(parsed.identityKeys)) {
+        try {
+          store.identityKeys.set(userId, await importPublicKey(ikPub));
+        } catch {}
+      }
+    }
+
+    console.log(`[Signal] State restored — ${store.preKeys.size} pre-keys, ${store.sessions.size} sessions`);
     return !!store.identityKeyPair;
   } catch (err) {
     console.warn('[Signal] Failed to restore state:', err.message);
@@ -268,6 +316,12 @@ async function persistStore() {
         priv: await exportPrivateKey(store.identityKeyPair.privateKey),
       };
     }
+    if (store.signingKeyPair) {
+      data.signingKeyPair = {
+        pub: await exportSigningPublicKey(store.signingKeyPair.publicKey),
+        priv: await exportSigningPrivateKey(store.signingKeyPair.privateKey),
+      };
+    }
     if (store.signedPreKey) {
       data.signedPreKey = {
         pub: await exportPublicKey(store.signedPreKey.publicKey),
@@ -288,12 +342,18 @@ async function persistStore() {
     data.sessions = {};
     for (const [userId, sess] of store.sessions.entries()) {
       data.sessions[userId] = {
+        rootKey: arrayBufferToBase64(sess.rootKey),
         sendingKey: arrayBufferToBase64(sess.sendingKey),
         receivingKey: arrayBufferToBase64(sess.receivingKey),
-        rootKey: arrayBufferToBase64(sess.rootKey),
         sendCount: sess.sendCount,
         recvCount: sess.recvCount,
       };
+    }
+
+    // Persist identity keys
+    data.identityKeys = {};
+    for (const [userId, ikPub] of store.identityKeys.entries()) {
+      data.identityKeys[userId] = await exportPublicKey(ikPub);
     }
 
     localStorage.setItem(STORE_KEY, JSON.stringify(data));
@@ -302,14 +362,20 @@ async function persistStore() {
   }
 }
 
+// ============ X3DH KEY AGREEMENT ============
+
 /**
- * X3DH: Start a session with another user
- * Performs the Extended Triple Diffie-Hellman key agreement
+ * X3DH Initiator: Start a session with another user (Alice side)
+ *
+ * Performs Extended Triple Diffie-Hellman and returns the ephemeral
+ * public key + pre-key ID so the receiver can derive the same secret.
+ *
+ * @returns {{ ephemeralKeyPublic: string, usedPreKeyIndex: number|null }}
  */
 export async function startSession(userId, keyBundle) {
   if (!store.identityKeyPair) throw new Error('Encryption not initialized');
 
-  // Import recipient's public keys
+  // Import recipient's public keys from their key bundle
   const theirIdentityKey = await importPublicKey(
     keyBundle.identityKey || keyBundle.identityKeyPublic
   );
@@ -317,33 +383,38 @@ export async function startSession(userId, keyBundle) {
     keyBundle.signedPreKey?.publicKey || keyBundle.signedPreKeyPublic
   );
 
-  // Generate ephemeral key pair for this X3DH
+  // Generate ephemeral key pair for this X3DH exchange
   const ephemeralKeyPair = await generateKeyPair();
 
-  // X3DH: 3 (or 4) DH operations
-  // DH1 = ECDH(IKa, SPKb) — our identity key with their signed pre-key
+  // === X3DH: 3 (or 4) DH operations ===
+  // DH1 = ECDH(IKa_priv, SPKb_pub) — our identity with their signed pre-key
   const dh1 = await ecdh(store.identityKeyPair.privateKey, theirSignedPreKey);
-  // DH2 = ECDH(EKa, IKb) — our ephemeral key with their identity key
+  // DH2 = ECDH(EKa_priv, IKb_pub) — our ephemeral with their identity
   const dh2 = await ecdh(ephemeralKeyPair.privateKey, theirIdentityKey);
-  // DH3 = ECDH(EKa, SPKb) — our ephemeral key with their signed pre-key
+  // DH3 = ECDH(EKa_priv, SPKb_pub) — our ephemeral with their signed pre-key
   const dh3 = await ecdh(ephemeralKeyPair.privateKey, theirSignedPreKey);
 
-  // Combine DH outputs
   let sharedSecret = concatBuffers(dh1, dh2, dh3);
+  let usedPreKeyIndex = null;
 
   // DH4 with one-time pre-key if available
-  if (keyBundle.preKeys?.length > 0) {
+  const otpk = keyBundle.oneTimePreKey || (keyBundle.preKeys?.length > 0 ? keyBundle.preKeys[0] : null);
+  if (otpk) {
     try {
-      const theirPreKey = await importPublicKey(keyBundle.preKeys[0].publicKey);
+      const theirPreKey = await importPublicKey(otpk.publicKey);
       const dh4 = await ecdh(ephemeralKeyPair.privateKey, theirPreKey);
       sharedSecret = concatBuffers(sharedSecret, dh4);
-    } catch {}
+      usedPreKeyIndex = otpk.index ?? otpk.keyId ?? null;
+    } catch (e) {
+      console.warn('[Signal] DH4 with one-time pre-key failed:', e.message);
+    }
   }
 
-  // Derive root key and chain keys using HKDF
+  // Derive root key + chain keys via HKDF (96 bytes)
   const masterKey = await hkdf(sharedSecret, new ArrayBuffer(32), 'PhantomSignalX3DH', 96);
   const masterBytes = new Uint8Array(masterKey);
 
+  // INITIATOR (Alice): sending = bytes 32-64, receiving = bytes 64-96
   const session = {
     rootKey: masterBytes.slice(0, 32).buffer,
     sendingKey: masterBytes.slice(32, 64).buffer,
@@ -356,11 +427,77 @@ export async function startSession(userId, keyBundle) {
   store.identityKeys.set(userId, theirIdentityKey);
   await persistStore();
 
-  console.log(`[Signal] X3DH session established with ${userId}`);
+  const ephemeralKeyPublic = await exportPublicKey(ephemeralKeyPair.publicKey);
+  console.log(`[Signal] X3DH session INITIATED with ${userId.slice(0, 8)}...`);
+
+  return { ephemeralKeyPublic, usedPreKeyIndex };
 }
 
 /**
- * Double Ratchet: Derive next message key from chain key
+ * X3DH Responder: Establish a session from a received PreKey message (Bob side)
+ *
+ * Bob receives Alice's first message which contains her identity key,
+ * ephemeral key, and which pre-key she used. Bob performs the mirror X3DH
+ * to derive the same shared secret.
+ */
+export async function receivePreKeyMessage(senderId, preKeyData) {
+  if (!store.identityKeyPair) throw new Error('Encryption not initialized');
+  if (!store.signedPreKey) throw new Error('No signed pre-key available');
+
+  // Import sender's keys from the PreKey message header
+  const theirIdentityKey = await importPublicKey(preKeyData.ik);
+  const theirEphemeralKey = await importPublicKey(preKeyData.ek);
+
+  // === Mirror X3DH: same 3 (or 4) DH operations, roles reversed ===
+  // DH1 = ECDH(SPKb_priv, IKa_pub) — our signed pre-key with their identity
+  const dh1 = await ecdh(store.signedPreKey.privateKey, theirIdentityKey);
+  // DH2 = ECDH(IKb_priv, EKa_pub) — our identity with their ephemeral
+  const dh2 = await ecdh(store.identityKeyPair.privateKey, theirEphemeralKey);
+  // DH3 = ECDH(SPKb_priv, EKa_pub) — our signed pre-key with their ephemeral
+  const dh3 = await ecdh(store.signedPreKey.privateKey, theirEphemeralKey);
+
+  let sharedSecret = concatBuffers(dh1, dh2, dh3);
+
+  // DH4 with one-time pre-key if the sender used one
+  if (preKeyData.pkId != null) {
+    const preKeyEntry = store.preKeys.get(preKeyData.pkId);
+    if (preKeyEntry) {
+      const dh4 = await ecdh(preKeyEntry.privateKey, theirEphemeralKey);
+      sharedSecret = concatBuffers(sharedSecret, dh4);
+      // Consume the one-time pre-key (delete it — it must never be reused)
+      store.preKeys.delete(preKeyData.pkId);
+      console.log(`[Signal] One-time pre-key ${preKeyData.pkId} consumed`);
+    } else {
+      console.warn(`[Signal] Pre-key ${preKeyData.pkId} not found (may have been used already)`);
+    }
+  }
+
+  // Derive the same master key via HKDF
+  const masterKey = await hkdf(sharedSecret, new ArrayBuffer(32), 'PhantomSignalX3DH', 96);
+  const masterBytes = new Uint8Array(masterKey);
+
+  // RESPONDER (Bob): keys are SWAPPED compared to initiator
+  // Bob's sendingKey = Alice's receivingKey (bytes 64-96)
+  // Bob's receivingKey = Alice's sendingKey (bytes 32-64)
+  const session = {
+    rootKey: masterBytes.slice(0, 32).buffer,
+    sendingKey: masterBytes.slice(64, 96).buffer,
+    receivingKey: masterBytes.slice(32, 64).buffer,
+    sendCount: 0,
+    recvCount: 0,
+  };
+
+  store.sessions.set(senderId, session);
+  store.identityKeys.set(senderId, theirIdentityKey);
+  await persistStore();
+
+  console.log(`[Signal] X3DH session RECEIVED from ${senderId.slice(0, 8)}...`);
+}
+
+// ============ DOUBLE RATCHET ============
+
+/**
+ * Derive next message key from chain key (symmetric ratchet step)
  */
 async function ratchetChainKey(chainKey) {
   const key = await crypto.subtle.importKey('raw', chainKey, { name: 'HMAC', hash: HKDF_HASH }, false, ['sign']);
@@ -373,56 +510,123 @@ async function ratchetChainKey(chainKey) {
 }
 
 /**
- * Encrypt a message using the Double Ratchet
+ * Encrypt a message using the Double Ratchet.
+ *
+ * If this is the first message to this user (sendCount === 0), returns a
+ * PreKeyMessage (type 3) that includes our identity key, ephemeral key,
+ * and which pre-key we used — so the receiver can establish the session.
+ *
+ * @param {string} userId - Recipient user ID
+ * @param {string} plaintext - Message text to encrypt
+ * @param {{ ephemeralKeyPublic?: string, usedPreKeyIndex?: number|null }} [sessionInit]
+ *   Session init data from startSession() — required for first message only
+ * @returns {{ ciphertext: string, messageType: string }}
  */
-export async function encrypt(userId, plaintext) {
-  let session = store.sessions.get(userId);
-  if (!session) {
-    throw new Error(`No session with ${userId}`);
-  }
+export async function encrypt(userId, plaintext, sessionInit = null) {
+  const session = store.sessions.get(userId);
+  if (!session) throw new Error(`No session with ${userId}`);
 
   // Ratchet the sending chain
   const { messageKey, nextChainKey } = await ratchetChainKey(session.sendingKey);
   session.sendingKey = nextChainKey;
   session.sendCount++;
 
-  // Encrypt with the message key
+  // Encrypt the plaintext
   const plaintextBuf = new TextEncoder().encode(plaintext);
   const encrypted = await aesEncrypt(messageKey, plaintextBuf);
+
+  const body = { iv: encrypted.iv, ct: encrypted.ciphertext, sn: session.sendCount };
+
+  let envelope;
+  if (session.sendCount === 1 && sessionInit) {
+    // PreKey message (type 3) — first message in this session
+    // Include X3DH init data so receiver can derive shared secret
+    const myIdentityKeyPublic = await exportPublicKey(store.identityKeyPair.publicKey);
+    envelope = JSON.stringify({
+      t: PREKEY_MSG,
+      ik: myIdentityKeyPublic,
+      ek: sessionInit.ephemeralKeyPublic,
+      pkId: sessionInit.usedPreKeyIndex,
+      body,
+    });
+  } else {
+    // Normal Signal message (type 1)
+    envelope = JSON.stringify({
+      t: SIGNAL_MSG,
+      body,
+    });
+  }
 
   await persistStore();
 
   return {
-    body: JSON.stringify({
-      iv: encrypted.iv,
-      ct: encrypted.ciphertext,
-      sn: session.sendCount,
-    }),
-    type: session.sendCount === 1 ? 3 : 1, // 3 = first message (PreKey), 1 = subsequent
-    registrationId: store.registrationId,
+    ciphertext: envelope,
+    messageType: session.sendCount === 1 && sessionInit ? 'prekey' : 'signal',
   };
 }
 
 /**
- * Decrypt a message using the Double Ratchet
+ * Decrypt a message using the Double Ratchet.
+ *
+ * For PreKey messages (type 3), automatically establishes the receiver-side
+ * session via receivePreKeyMessage() before decrypting.
+ *
+ * @param {string} senderId - Sender user ID
+ * @param {string} ciphertextEnvelope - The raw ciphertext string from the server
+ * @returns {string} Decrypted plaintext
  */
-export async function decrypt(userId, cipherMessage) {
-  let session = store.sessions.get(userId);
-  if (!session) {
-    throw new Error(`No session with ${userId}`);
-  }
+export async function decrypt(senderId, ciphertextEnvelope) {
+  const raw = typeof ciphertextEnvelope === 'string' ? ciphertextEnvelope : ciphertextEnvelope.body || ciphertextEnvelope;
 
-  const body = typeof cipherMessage === 'string' ? cipherMessage : cipherMessage.body;
   let parsed;
   try {
-    parsed = JSON.parse(body);
+    parsed = JSON.parse(raw);
   } catch {
-    // Not a Signal Protocol message — return as-is
-    return body;
+    // Not JSON — return as-is (legacy plaintext)
+    return raw;
   }
 
-  if (!parsed.iv || !parsed.ct) {
-    return body; // Not encrypted, return raw
+  // Check if this is a Signal Protocol envelope
+  if (!parsed.t && !parsed.body) {
+    // Legacy format check: { iv, ct } without wrapper
+    if (parsed.iv && parsed.ct) {
+      // Old format — try to decrypt with existing session
+      return await _decryptBody(senderId, parsed);
+    }
+    // Not encrypted at all
+    return raw;
+  }
+
+  if (parsed.t === PREKEY_MSG) {
+    // PreKey message — establish session first, then decrypt
+    if (!hasSession(senderId)) {
+      await receivePreKeyMessage(senderId, {
+        ik: parsed.ik,
+        ek: parsed.ek,
+        pkId: parsed.pkId,
+      });
+    }
+    return await _decryptBody(senderId, parsed.body);
+  }
+
+  if (parsed.t === SIGNAL_MSG) {
+    // Normal encrypted message
+    return await _decryptBody(senderId, parsed.body);
+  }
+
+  // Unknown format — return raw
+  return raw;
+}
+
+/**
+ * Internal: decrypt the body { iv, ct, sn } using the receiving chain
+ */
+async function _decryptBody(senderId, body) {
+  const session = store.sessions.get(senderId);
+  if (!session) throw new Error(`No session with ${senderId} — cannot decrypt`);
+
+  if (!body.iv || !body.ct) {
+    throw new Error('Invalid encrypted body: missing iv or ct');
   }
 
   // Ratchet the receiving chain
@@ -430,8 +634,8 @@ export async function decrypt(userId, cipherMessage) {
   session.receivingKey = nextChainKey;
   session.recvCount++;
 
-  // Decrypt with the message key
-  const plainBuf = await aesDecrypt(messageKey, parsed.iv, parsed.ct);
+  // Decrypt
+  const plainBuf = await aesDecrypt(messageKey, body.iv, body.ct);
   await persistStore();
 
   return new TextDecoder().decode(plainBuf);
@@ -441,15 +645,32 @@ export async function decrypt(userId, cipherMessage) {
 export const encryptMessage = encrypt;
 export const decryptMessage = decrypt;
 
+// ============ SESSION UTILITIES ============
+
 /**
- * Check if a session exists
+ * Check if we have an established session with a user
  */
 export function hasSession(userId) {
   return store.sessions.has(userId);
 }
 
 /**
- * Get pre-key count
+ * Check if encryption is initialized (identity key exists)
+ */
+export function isInitialized() {
+  return !!store.identityKeyPair;
+}
+
+/**
+ * Get our identity public key as base64
+ */
+export async function getIdentityKeyPublic() {
+  if (!store.identityKeyPair) return null;
+  return exportPublicKey(store.identityKeyPair.publicKey);
+}
+
+/**
+ * Get pre-key count (unused keys available)
  */
 export function getPreKeyCount() {
   return store.preKeys.size;
@@ -469,6 +690,7 @@ export async function generateMorePreKeys(startId, count = 80) {
     });
   }
   await persistStore();
+  console.log(`[Signal] Generated ${count} new pre-keys (${store.preKeys.size} total)`);
   return preKeys;
 }
 
@@ -480,10 +702,11 @@ export function getLocalRegistrationId() {
 }
 
 /**
- * Clear all state
+ * Clear all encryption state (logout)
  */
 export function clearEncryptionState() {
   store.identityKeyPair = null;
+  store.signingKeyPair = null;
   store.signedPreKey = null;
   store.signedPreKeySignature = null;
   store.registrationId = 0;
@@ -491,4 +714,18 @@ export function clearEncryptionState() {
   store.sessions.clear();
   store.identityKeys.clear();
   localStorage.removeItem(STORE_KEY);
+  console.log('[Signal] All encryption state cleared');
+}
+
+/**
+ * Check if a ciphertext string looks like an encrypted Signal message
+ */
+export function isEncryptedMessage(ciphertext) {
+  if (!ciphertext || typeof ciphertext !== 'string') return false;
+  try {
+    const parsed = JSON.parse(ciphertext);
+    return (parsed.t === PREKEY_MSG || parsed.t === SIGNAL_MSG) && parsed.body?.iv && parsed.body?.ct;
+  } catch {
+    return false;
+  }
 }

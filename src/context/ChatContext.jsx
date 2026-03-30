@@ -4,7 +4,12 @@ import * as messagesApi from '../api/messages';
 import * as conversationsApi from '../api/conversations';
 import * as groupsApi from '../api/groups';
 import * as keysApi from '../api/keys';
-import { encrypt, decrypt, startSession, hasSession, restoreEncryptionState, getPreKeyCount, generateMorePreKeys } from '../crypto/signalProtocol';
+import {
+  encrypt, decrypt, startSession, hasSession,
+  restoreEncryptionState, isInitialized,
+  getPreKeyCount, generateMorePreKeys,
+  isEncryptedMessage,
+} from '../crypto/signalProtocol';
 import { MESSAGE_POLL_INTERVAL } from '../utils/constants';
 
 const ChatContext = createContext(null);
@@ -19,6 +24,8 @@ export function ChatProvider({ children }) {
   const pollRef = useRef(null);
   const pendingErrorCount = useRef(0);
   const encryptionReady = useRef(false);
+  // Track session init data for first messages (userId -> { ephemeralKeyPublic, usedPreKeyIndex })
+  const sessionInitCache = useRef(new Map());
 
   // Initialize encryption on mount
   useEffect(() => {
@@ -26,6 +33,7 @@ export function ChatProvider({ children }) {
       restoreEncryptionState().then((restored) => {
         encryptionReady.current = restored;
         if (restored) console.log('[Signal] Encryption state restored');
+        else console.warn('[Signal] No encryption state found — keys need to be generated');
       });
     }
   }, [user]);
@@ -47,7 +55,6 @@ export function ChatProvider({ children }) {
           isMuted: c.isMuted || false,
         }));
         setConversations((prev) => {
-          // Merge: server is source of truth, but keep any local-only convos
           const serverIds = new Set(serverConvos.map((c) => c.id));
           const localOnly = prev.filter((c) => !serverIds.has(c.id));
           return [...serverConvos, ...localOnly];
@@ -60,12 +67,11 @@ export function ChatProvider({ children }) {
     }
   }, []);
 
-  // Load conversations on mount
   useEffect(() => {
     if (user) fetchConversations();
   }, [user, fetchConversations]);
 
-  // Delete a conversation (soft-delete on server, remove from local state)
+  // Delete a conversation
   const deleteConversation = useCallback(async (peerId) => {
     setConversations((prev) => prev.filter((c) => c.id !== peerId));
     if (activeConversation?.id === peerId) setActiveConversation(null);
@@ -88,7 +94,7 @@ export function ChatProvider({ children }) {
     }
   }, []);
 
-  // Pin/unpin conversation (toggle on server)
+  // Pin/unpin conversation
   const pinConversation = useCallback(async (peerId) => {
     setConversations((prev) =>
       prev.map((c) => (c.id === peerId ? { ...c, isPinned: !c.isPinned } : c))
@@ -100,7 +106,7 @@ export function ChatProvider({ children }) {
     }
   }, []);
 
-  // Mute/unmute conversation (toggle on server)
+  // Mute/unmute conversation
   const muteConversation = useCallback(async (peerId) => {
     setConversations((prev) =>
       prev.map((c) => (c.id === peerId ? { ...c, isMuted: !c.isMuted } : c))
@@ -114,14 +120,20 @@ export function ChatProvider({ children }) {
 
   // Load message history for a conversation
   const loadMessageHistory = useCallback(async (peerId) => {
-    // Don't reload if we already have messages
     if (messages[peerId]?.length > 0) return;
     try {
       const res = await messagesApi.getMessageHistory(peerId);
       if (res.success && res.data?.messages) {
+        // Decrypt all historical messages client-side
+        const decryptedMsgs = await Promise.all(
+          res.data.messages.map(async (msg) => {
+            const plaintext = await decryptReceivedMessage(msg);
+            return { ...msg, plaintext, displayText: plaintext };
+          })
+        );
         setMessages((prev) => ({
           ...prev,
-          [peerId]: res.data.messages,
+          [peerId]: decryptedMsgs,
         }));
       }
     } catch (err) {
@@ -137,9 +149,15 @@ export function ChatProvider({ children }) {
     try {
       const res = await messagesApi.getMessageHistory(peerId, { before: oldestId });
       if (res.success && res.data?.messages?.length > 0) {
+        const decryptedMsgs = await Promise.all(
+          res.data.messages.map(async (msg) => {
+            const plaintext = await decryptReceivedMessage(msg);
+            return { ...msg, plaintext, displayText: plaintext };
+          })
+        );
         setMessages((prev) => ({
           ...prev,
-          [peerId]: [...res.data.messages, ...(prev[peerId] || [])],
+          [peerId]: [...decryptedMsgs, ...(prev[peerId] || [])],
         }));
         return { hasMore: res.data.hasMore };
       }
@@ -164,47 +182,65 @@ export function ChatProvider({ children }) {
     }
   }, []);
 
-  // Ensure session exists with a user before sending
+  // Ensure Signal Protocol session exists before sending
   const ensureSession = useCallback(async (userId) => {
     if (hasSession(userId)) return true;
+    if (!isInitialized()) {
+      console.warn('[Signal] Cannot establish session — encryption not initialized');
+      return false;
+    }
     try {
       const res = await keysApi.getKeyBundle(userId);
       if (res.success && res.data) {
-        await startSession(userId, res.data);
+        const sessionInit = await startSession(userId, res.data);
+        // Cache the session init data for the first message (PreKey message)
+        sessionInitCache.current.set(userId, sessionInit);
         return true;
       }
+      console.warn(`[Signal] No key bundle available for ${userId}`);
     } catch (err) {
       console.warn(`[Signal] Failed to establish session with ${userId}:`, err.message);
     }
     return false;
   }, []);
 
-  // Process a received message — return displayable text
+  // Process a received message — decrypt and return displayable text
   const decryptReceivedMessage = useCallback(async (msg) => {
-    const text = msg.ciphertext || '';
+    const ciphertext = msg.ciphertext || '';
+    const senderId = msg.senderId;
 
-    // Check if this is an encrypted Signal Protocol message (JSON with iv + ct)
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed.iv && parsed.ct) {
-        // This is an encrypted message — try to decrypt if we have a session
-        if (hasSession(msg.senderId)) {
-          try {
-            const plaintext = await decrypt(msg.senderId, { body: text, type: msg.signalType || 3 });
-            return plaintext;
-          } catch (err) {
-            console.warn('[Signal] Decryption failed:', err.message);
-          }
-        }
-        // No session or decryption failed — show placeholder
-        return '[Encrypted message — session not established]';
+    // Skip system messages (screenshot alerts, etc.)
+    if (msg.messageType === 'system') return ciphertext;
+
+    // Check if this looks like an encrypted Signal Protocol message
+    if (isEncryptedMessage(ciphertext)) {
+      try {
+        const plaintext = await decrypt(senderId, ciphertext);
+        return plaintext;
+      } catch (err) {
+        console.warn('[Signal] Decryption failed for msg', msg.id?.slice(0, 8), ':', err.message);
+        return '\u{1F512} Encrypted message \u2014 unable to decrypt';
       }
-    } catch {
-      // Not JSON — it's plaintext, fall through
     }
 
-    // Plain text message — return as-is
-    return text;
+    // Check for old-format encrypted messages { iv, ct }
+    try {
+      const parsed = JSON.parse(ciphertext);
+      if (parsed.iv && parsed.ct && hasSession(senderId)) {
+        try {
+          const plaintext = await decrypt(senderId, ciphertext);
+          return plaintext;
+        } catch (err) {
+          console.warn('[Signal] Legacy decryption failed:', err.message);
+          return '\u{1F512} Encrypted message \u2014 unable to decrypt';
+        }
+      }
+    } catch {
+      // Not JSON — plaintext
+    }
+
+    // Unencrypted/legacy message — return as-is
+    return ciphertext;
   }, []);
 
   // Fetch pending messages
@@ -212,15 +248,14 @@ export function ChatProvider({ children }) {
     try {
       const res = await messagesApi.getPendingMessages();
       if (res.success && Array.isArray(res.data)) {
-        pendingErrorCount.current = 0; // Reset on success
+        pendingErrorCount.current = 0;
         const newMsgs = res.data;
         if (newMsgs.length > 0) {
-          console.log('[Chat] Received', newMsgs.length, 'pending messages:', JSON.stringify(newMsgs.map(m => ({ id: m.id, senderId: m.senderId, ciphertext: m.ciphertext?.substring(0, 60), messageType: m.messageType }))));
+          console.log('[Chat] Received', newMsgs.length, 'pending messages');
           for (const msg of newMsgs) {
             const convId = msg.senderId;
-            // Process the message
+            // Decrypt the message
             const plaintext = await decryptReceivedMessage(msg);
-            console.log('[Chat] Message processed:', { id: msg.id, rawCiphertext: msg.ciphertext?.substring(0, 60), plaintext: plaintext?.substring(0, 60) });
 
             const processedMsg = {
               ...msg,
@@ -245,16 +280,14 @@ export function ChatProvider({ children }) {
               return [{ id: convId, senderId: msg.senderId, username: senderName, name: senderName, lastMessage: preview, lastMessageAt: msg.createdAt, unread: 1 }, ...prev];
             });
 
-            // Acknowledge receipt
+            // Acknowledge receipt (server deletes the pending copy)
             messagesApi.acknowledgeMessage(msg.id).catch(console.error);
           }
-          // Check pre-keys after receiving messages
+          // Check if pre-keys need replenishment after receiving messages
           checkPreKeys();
         }
       }
     } catch (err) {
-      // Silence common non-actionable errors to avoid console spam
-      // Only log after 3+ consecutive failures
       if (err?.status !== 401) {
         pendingErrorCount.current = (pendingErrorCount.current || 0) + 1;
         if (pendingErrorCount.current >= 3 && pendingErrorCount.current % 10 === 0) {
@@ -291,7 +324,9 @@ export function ChatProvider({ children }) {
     if (user) fetchGroups();
   }, [user, fetchGroups]);
 
-  // Send an encrypted message
+  // ═══════════════════════════════════════════
+  // SEND MESSAGE — with real Signal Protocol encryption
+  // ═══════════════════════════════════════════
   const sendMessage = useCallback(async (recipientId, text, messageType = 'text') => {
     const msg = {
       id: 'temp_' + Date.now(),
@@ -304,13 +339,13 @@ export function ChatProvider({ children }) {
       pending: true,
     };
 
-    // Optimistic update
+    // Optimistic update — show plaintext locally
     setMessages((prev) => ({
       ...prev,
       [recipientId]: [...(prev[recipientId] || []), msg],
     }));
 
-    // Update conversation list
+    // Update conversation list preview
     setConversations((prev) => {
       const preview = text.length > 50 ? text.slice(0, 50) + '...' : text;
       const existing = prev.find((c) => c.id === recipientId);
@@ -321,20 +356,43 @@ export function ChatProvider({ children }) {
     });
 
     try {
-      // Ensure Signal Protocol session
-      // Signal Protocol encryption disabled until two-way X3DH session
-      // establishment is fully implemented. Messages are sent as plaintext
-      // over TLS. The server stores only ciphertext field.
+      let ciphertextToSend = text;
+      let sendMessageType = messageType;
+
+      // Encrypt if encryption is ready
+      if (isInitialized()) {
+        // Ensure we have a session with the recipient
+        const sessionOk = await ensureSession(recipientId);
+        if (sessionOk) {
+          // Get session init data if this is the first message (PreKey message)
+          const sessionInit = sessionInitCache.current.get(recipientId) || null;
+
+          const encrypted = await encrypt(recipientId, text, sessionInit);
+          ciphertextToSend = encrypted.ciphertext;
+          sendMessageType = encrypted.messageType; // 'prekey' or 'signal'
+
+          // Clear the session init cache after first use
+          if (sessionInit) {
+            sessionInitCache.current.delete(recipientId);
+          }
+
+          console.log(`[Signal] Message encrypted (${sendMessageType}) for ${recipientId.slice(0, 8)}...`);
+        } else {
+          // No session could be established — send as plaintext (fallback)
+          console.warn('[Signal] No session — sending as plaintext over TLS');
+        }
+      } else {
+        console.warn('[Signal] Encryption not initialized — sending as plaintext over TLS');
+      }
+
       const res = await messagesApi.sendMessage({
         recipientId,
-        ciphertext: text,
-        messageType,
+        ciphertext: ciphertextToSend,
+        messageType: sendMessageType,
       });
 
-      // Mark as sent — handle both response shapes defensively
       const success = res?.success !== false;
       if (success) {
-        console.log('[Chat] Message sent:', res);
         setMessages((prev) => ({
           ...prev,
           [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false, failed: false } : m)),
@@ -343,7 +401,7 @@ export function ChatProvider({ children }) {
         throw new Error(res?.error || 'Send returned failure');
       }
     } catch (err) {
-      console.error('[Chat] Send message failed:', err?.message || err, 'Status:', err?.status, 'Full:', JSON.stringify(err));
+      console.error('[Chat] Send message failed:', err?.message || err);
       setMessages((prev) => ({
         ...prev,
         [recipientId]: (prev[recipientId] || []).map((m) => (m.id === msg.id ? { ...m, pending: false, failed: true } : m)),
