@@ -3,6 +3,7 @@ import { setAccessToken } from '../api/client';
 import * as authApi from '../api/auth';
 import { restoreEncryptionState, clearEncryptionState } from '../crypto/signalProtocol';
 import { clearWalletFromSession } from '../crypto/btcWallet';
+import { unlockVault, lockVault, migrateToVault } from '../crypto/vault';
 
 const AuthContext = createContext(null);
 
@@ -15,10 +16,12 @@ export function AuthProvider({ children }) {
       const res = await authApi.getMe();
       if (res.success) {
         setUser(res.data);
+        return res.data;
       }
     } catch {
       setUser(null);
     }
+    return null;
   }, []);
 
   useEffect(() => {
@@ -26,8 +29,12 @@ export function AuthProvider({ children }) {
       // Try to restore session — refresh token is in httpOnly cookie (sent automatically)
       try {
         await authApi.refreshAccessToken();
-        await fetchUser();
-        // Restore Signal Protocol state
+        const userData = await fetchUser();
+        // Unlock vault with user identity, then restore encrypted keys
+        if (userData) {
+          await unlockVault(userData.username, userData.id);
+          await migrateToVault(['phantom_signal_v2', 'phantom_signal_store', 'phantom_wallet']);
+        }
         await restoreEncryptionState();
       } catch {
         // No valid session — user will need to log in
@@ -75,11 +82,22 @@ export function AuthProvider({ children }) {
     };
   }, [user]);
 
+  // Helper: unlock vault + restore encryption after successful login
+  const postLoginSetup = async () => {
+    const userData = await fetchUser();
+    if (userData) {
+      await unlockVault(userData.username, userData.id);
+      await migrateToVault(['phantom_signal_v2', 'phantom_signal_store', 'phantom_wallet']);
+    }
+    await restoreEncryptionState();
+  };
+
   // Unified register — works for all auth methods
   const register = async (data) => {
     const res = await authApi.register(data);
     if (res.success) {
       setUser({ id: res.data.userId, username: res.data.username, tier: res.data.tier });
+      await unlockVault(res.data.username, res.data.userId);
     }
     return res;
   };
@@ -97,8 +115,7 @@ export function AuthProvider({ children }) {
   const loginWithEmail = async ({ email, password, totpCode }) => {
     const res = await authApi.loginWithEmail({ email, password, totpCode });
     if (res.success && !res.data?.requires2FA) {
-      await fetchUser();
-      await restoreEncryptionState();
+      await postLoginSetup();
     }
     return res;
   };
@@ -107,8 +124,7 @@ export function AuthProvider({ children }) {
   const loginWithPhone = async ({ phone, code, totpCode }) => {
     const res = await authApi.verifyPhoneCode({ phone, code, totpCode });
     if (res.success && !res.data?.requires2FA) {
-      await fetchUser();
-      await restoreEncryptionState();
+      await postLoginSetup();
     }
     return res;
   };
@@ -121,6 +137,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     clearEncryptionState();
     clearWalletFromSession();
+    lockVault();
   };
 
   return (

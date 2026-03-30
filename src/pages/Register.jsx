@@ -82,7 +82,7 @@ export default function Register() {
 
       if (res.success) {
         // Save wallet to session
-        saveWalletToSession({
+        await saveWalletToSession({
           mnemonic: newWallet.mnemonic,
           address: newWallet.address,
           privateKey: newWallet.privateKey,

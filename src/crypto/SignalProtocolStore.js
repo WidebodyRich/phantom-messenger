@@ -4,6 +4,8 @@
  * Persists to localStorage for session persistence across browser restarts
  */
 
+import { vaultSet, vaultGet, vaultRemove } from './vault';
+
 const STORAGE_KEY = 'phantom_signal_store';
 
 function arrayBufferToBase64(buffer) {
@@ -60,15 +62,15 @@ export default class SignalProtocolStore {
           serializable[key] = value;
         }
       }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+      vaultSet(STORAGE_KEY, JSON.stringify(serializable)).catch(e => console.warn('[Signal Store] Vault write failed:', e.message));
     } catch (e) {
       console.warn('[Signal Store] Failed to persist:', e.message);
     }
   }
 
-  _load() {
+  async _load() {
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
+      const data = await vaultGet(STORAGE_KEY);
       if (!data) return;
       const parsed = JSON.parse(data);
       for (const [key, value] of Object.entries(parsed)) {
@@ -246,6 +248,6 @@ export default class SignalProtocolStore {
   // Helper: clear everything
   clearAll() {
     this._store = {};
-    localStorage.removeItem(STORAGE_KEY);
+    vaultRemove(STORAGE_KEY);
   }
 }

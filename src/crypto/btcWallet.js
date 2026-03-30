@@ -181,15 +181,28 @@ export function decryptWalletData(encoded) {
 /**
  * Save wallet to localStorage
  */
-export function saveWalletToSession(wallet) {
-  localStorage.setItem('phantom_wallet', encryptWalletData(wallet));
+export async function saveWalletToSession(wallet) {
+  const { vaultSet } = await import('./vault');
+  await vaultSet('phantom_wallet', encryptWalletData(wallet));
 }
 
 /**
- * Load wallet from localStorage
+ * Load wallet from localStorage (sync fallback for Settings page)
  */
 export function loadWalletFromSession() {
   const data = localStorage.getItem('phantom_wallet');
+  if (!data) return null;
+  // Handle vault-encrypted values — can't decrypt sync, return null
+  if (data.startsWith('v1:')) return null;
+  return decryptWalletData(data);
+}
+
+/**
+ * Load wallet from localStorage (async, vault-aware)
+ */
+export async function loadWalletFromSessionAsync() {
+  const { vaultGet } = await import('./vault');
+  const data = await vaultGet('phantom_wallet');
   if (!data) return null;
   return decryptWalletData(data);
 }

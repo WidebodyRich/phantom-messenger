@@ -45,6 +45,9 @@ const store = {
 // Persistence key
 const STORE_KEY = 'phantom_signal_v2';
 
+// Vault — encrypts localStorage at rest
+import { vaultSet, vaultGet, vaultRemove } from './vault';
+
 // ============ PRELOAD / CACHE ============
 // Start CryptoKey import before React renders. Cache the promise so
 // restoreEncryptionState() is called only once.
@@ -240,14 +243,14 @@ async function sign(privateKey, data) {
  * Key = SKIPPED_PREFIX + {userId}_{sequenceNumber}
  * Each key is single-use and auto-expires after SKIPPED_KEY_TTL_H hours.
  */
-function storeSkippedMessageKey(userId, sequenceNumber, messageKey) {
+async function storeSkippedMessageKey(userId, sequenceNumber, messageKey) {
   const storageKey = `${SKIPPED_PREFIX}${userId}_${sequenceNumber}`;
   const entry = {
     key: arrayBufferToBase64(messageKey),
     storedAt: Date.now(),
   };
   try {
-    localStorage.setItem(storageKey, JSON.stringify(entry));
+    await vaultSet(storageKey, JSON.stringify(entry));
   } catch (e) {
     console.warn('[Signal] Failed to store skipped key:', e.message);
   }
@@ -257,9 +260,9 @@ function storeSkippedMessageKey(userId, sequenceNumber, messageKey) {
  * Retrieve a skipped message key (single-use — deleted after retrieval).
  * Returns ArrayBuffer or null.
  */
-function getSkippedMessageKey(userId, sequenceNumber) {
+async function getSkippedMessageKey(userId, sequenceNumber) {
   const storageKey = `${SKIPPED_PREFIX}${userId}_${sequenceNumber}`;
-  const raw = localStorage.getItem(storageKey);
+  const raw = await vaultGet(storageKey);
   if (!raw) return null;
 
   try {
@@ -268,15 +271,15 @@ function getSkippedMessageKey(userId, sequenceNumber) {
     // Check TTL
     const ageHours = (Date.now() - entry.storedAt) / (1000 * 60 * 60);
     if (ageHours > SKIPPED_KEY_TTL_H) {
-      localStorage.removeItem(storageKey);
+      vaultRemove(storageKey);
       return null;
     }
 
     // Delete after retrieval — each key is single-use
-    localStorage.removeItem(storageKey);
+    vaultRemove(storageKey);
     return base64ToArrayBuffer(entry.key);
   } catch {
-    localStorage.removeItem(storageKey);
+    vaultRemove(storageKey);
     return null;
   }
 }
@@ -285,22 +288,28 @@ function getSkippedMessageKey(userId, sequenceNumber) {
  * Purge all expired skipped keys from localStorage.
  * Call periodically (e.g. every 4 hours) and on app load.
  */
-export function purgeExpiredSkippedKeys() {
+export async function purgeExpiredSkippedKeys() {
   const now = Date.now();
   const maxAge = SKIPPED_KEY_TTL_H * 60 * 60 * 1000;
   let purged = 0;
 
+  const keys = [];
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
-    if (!k || !k.startsWith(SKIPPED_PREFIX)) continue;
+    if (k && k.startsWith(SKIPPED_PREFIX)) keys.push(k);
+  }
+
+  for (const k of keys) {
     try {
-      const entry = JSON.parse(localStorage.getItem(k));
+      const raw = await vaultGet(k);
+      if (!raw) { vaultRemove(k); purged++; continue; }
+      const entry = JSON.parse(raw);
       if (now - entry.storedAt > maxAge) {
-        localStorage.removeItem(k);
+        vaultRemove(k);
         purged++;
       }
     } catch {
-      localStorage.removeItem(k);
+      vaultRemove(k);
       purged++;
     }
   }
@@ -374,7 +383,7 @@ export async function initializeEncryption() {
  */
 export async function restoreEncryptionState() {
   try {
-    const data = localStorage.getItem(STORE_KEY);
+    const data = await vaultGet(STORE_KEY);
     if (!data) return false;
     const parsed = JSON.parse(data);
 
@@ -498,7 +507,7 @@ async function persistStore() {
       data.identityKeys[userId] = await exportPublicKey(ikPub);
     }
 
-    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    await vaultSet(STORE_KEY, JSON.stringify(data));
   } catch (err) {
     console.warn('[Signal] Failed to persist:', err.message);
   }
@@ -905,6 +914,8 @@ export function hasLocalKeys() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return false;
+    // If vault-encrypted, we know keys exist (can't parse, but data is there)
+    if (raw.startsWith('v1:')) return true;
     const parsed = JSON.parse(raw);
     return !!(parsed.identityKeyPair?.pub && parsed.identityKeyPair?.priv);
   } catch {
@@ -981,12 +992,12 @@ export function clearEncryptionState() {
   store.preKeys.clear();
   store.sessions.clear();
   store.identityKeys.clear();
-  localStorage.removeItem(STORE_KEY);
+  vaultRemove(STORE_KEY);
   clearPreloadCache();
   // Also clear all skipped keys
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
-    if (k && k.startsWith(SKIPPED_PREFIX)) localStorage.removeItem(k);
+    if (k && k.startsWith(SKIPPED_PREFIX)) vaultRemove(k);
   }
   console.log('[Signal] All encryption state cleared');
 }

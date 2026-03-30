@@ -5,6 +5,7 @@ import { MessageCircle, ArrowRight, AlertCircle, Key, Mail, Phone, Eye, EyeOff, 
 import { useAuth } from '../context/AuthContext';
 import { restoreWalletFromMnemonic, saveWalletToSession } from '../crypto/btcWallet';
 import { restoreEncryptionState } from '../crypto/signalProtocol';
+import { unlockVault, migrateToVault } from '../crypto/vault';
 import * as authApi from '../api/auth';
 import toast from 'react-hot-toast';
 
@@ -134,9 +135,10 @@ export default function Login() {
                 username: seedUsername, challengeId: c2.data.challengeId, signature: s2, totpCode: code,
               });
               if (r2.success && !r2.data?.requires2FA) {
-                saveWalletToSession(seedWallet);
+                await saveWalletToSession(seedWallet);
+                const u = await fetchUser();
+                if (u) { await unlockVault(u.username, u.id); await migrateToVault(['phantom_signal_v2', 'phantom_signal_store', 'phantom_wallet']); }
                 await restoreEncryptionState();
-                await fetchUser();
                 toast.success('Welcome back!');
                 navigate('/chat');
               } else {
@@ -150,9 +152,10 @@ export default function Login() {
           setLoading(false);
           return;
         }
-        saveWalletToSession(wallet);
+        await saveWalletToSession(wallet);
+        const u = await fetchUser();
+        if (u) { await unlockVault(u.username, u.id); await migrateToVault(['phantom_signal_v2', 'phantom_signal_store', 'phantom_wallet']); }
         await restoreEncryptionState();
-        await fetchUser();
         toast.success('Welcome back!');
         navigate('/chat');
       } else {
