@@ -3,6 +3,8 @@ import { AnimatePresence } from 'framer-motion';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { ChatProvider } from './context/ChatContext';
+import { SocketProvider } from './context/SocketContext';
+import { WebRTCProvider } from './context/WebRTCContext';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -39,9 +41,13 @@ export default function App() {
             path="/chat/*"
             element={
               <ProtectedRoute>
-                <ChatProvider>
-                  <Chat />
-                </ChatProvider>
+                <SocketProvider>
+                  <ChatProvider>
+                    <WebRTCProvider>
+                      <Chat />
+                    </WebRTCProvider>
+                  </ChatProvider>
+                </SocketProvider>
               </ProtectedRoute>
             }
           />

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Phone, Video, Lock, MoreVertical, ChevronDown, Search, BellOff, Trash2, Ban } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
+import { useCallContext } from '../../context/WebRTCContext';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import TypingIndicator from './TypingIndicator';
@@ -13,6 +14,7 @@ import toast from 'react-hot-toast';
 export default function ChatArea({ onBack }) {
   const { activeConversation, messages, sendMessage, markConversationRead, loadMessageHistory, loadOlderMessages, muteConversation, deleteConversation } = useChat();
   const { user } = useAuth();
+  const { startCall } = useCallContext();
   const messagesEndRef = useRef(null);
   const containerRef = useRef(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
@@ -123,14 +125,14 @@ export default function ChatArea({ onBack }) {
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={() => toast('Voice calls coming soon!', { icon: '📞' })}
+            onClick={() => startCall(activeConversation.id, activeConversation.username || activeConversation.name, 'audio')}
             className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors cursor-pointer"
             title="Voice Call"
           >
             <Phone className="w-5 h-5 text-phantom-gray-500" />
           </button>
           <button
-            onClick={() => toast('Face to Face calls coming soon!', { icon: '📹' })}
+            onClick={() => startCall(activeConversation.id, activeConversation.username || activeConversation.name, 'video')}
             className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors cursor-pointer"
             title="Face to Face (F2F)"
           >
