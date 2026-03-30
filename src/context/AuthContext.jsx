@@ -23,16 +23,14 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const init = async () => {
-      const refreshToken = localStorage.getItem('phantom_refresh');
-      if (refreshToken) {
-        try {
-          await authApi.refreshAccessToken();
-          await fetchUser();
-          // Restore Signal Protocol state
-          await restoreEncryptionState();
-        } catch {
-          localStorage.removeItem('phantom_refresh');
-        }
+      // Try to restore session — refresh token is in httpOnly cookie (sent automatically)
+      try {
+        await authApi.refreshAccessToken();
+        await fetchUser();
+        // Restore Signal Protocol state
+        await restoreEncryptionState();
+      } catch {
+        // No valid session — user will need to log in
       }
       setLoading(false);
     };
@@ -63,7 +61,6 @@ export function AuthProvider({ children }) {
         } catch (err) {
           console.warn('[Auth] Visibility refresh failed:', err.message);
           // If refresh fails completely, force logout
-          localStorage.removeItem('phantom_refresh');
           setAccessToken(null);
           setUser(null);
         }

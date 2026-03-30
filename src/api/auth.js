@@ -1,6 +1,6 @@
 import client, { setAccessToken } from './client';
 
-// ── Unified Registration (new) ──
+// ── Unified Registration ──
 export async function register({ username, email, phone, password, identityKeyPublic, signedPreKeyPublic, signedPreKeySignature, preKeys }) {
   const res = await client.post('/api/auth/register', {
     username,
@@ -14,7 +14,7 @@ export async function register({ username, email, phone, password, identityKeyPu
   });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    localStorage.setItem('phantom_refresh', res.data.refreshToken);
+    // Refresh token is now set as httpOnly cookie by the server
   }
   return res;
 }
@@ -31,7 +31,6 @@ export async function registerWithEmail({ username, emailHash, passwordHash, ide
   });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
@@ -45,22 +44,20 @@ export async function loginWithSeed({ username, challengeId, signature }) {
   const res = await client.post('/api/auth/login/seed', { username, challengeId, signature });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
 
-// ── Email + Password Login (new) ──
+// ── Email + Password Login ──
 export async function loginWithEmail({ email, password }) {
   const res = await client.post('/api/auth/login/email', { email, password });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
 
-// ── Phone Login (new) ──
+// ── Phone Login ──
 export async function loginWithPhone(phone) {
   return client.post('/api/auth/login/phone', { phone });
 }
@@ -69,12 +66,11 @@ export async function verifyPhoneCode({ phone, code }) {
   const res = await client.post('/api/auth/login/phone/verify', { phone, code });
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    localStorage.setItem('phantom_refresh', res.data.refreshToken);
   }
   return res;
 }
 
-// ── Password Reset (new) ──
+// ── Password Reset ──
 export async function requestPasswordReset(email) {
   return client.post('/api/auth/reset-password', { email });
 }
@@ -83,7 +79,7 @@ export async function confirmPasswordReset({ email, code, newPassword }) {
   return client.post('/api/auth/reset-password/confirm', { email, code, newPassword });
 }
 
-// ── Profile Management (new) ──
+// ── Profile Management ──
 export async function getProfile() {
   return client.get('/api/auth/profile');
 }
@@ -116,21 +112,17 @@ export async function lookupByAddress(btcAddress) {
 export async function logout() {
   try {
     await client.post('/api/auth/logout');
+    // Server clears the httpOnly refresh cookie
   } finally {
     setAccessToken(null);
-    localStorage.removeItem('phantom_refresh');
   }
 }
 
 export async function refreshAccessToken() {
-  const refreshToken = localStorage.getItem('phantom_refresh');
-  if (!refreshToken) throw new Error('No refresh token');
-  const res = await client.post('/api/auth/refresh', { refreshToken });
+  // Refresh token is sent automatically via httpOnly cookie
+  const res = await client.post('/api/auth/refresh', {});
   if (res.success) {
     setAccessToken(res.data.accessToken);
-    if (res.data.refreshToken) {
-      localStorage.setItem('phantom_refresh', res.data.refreshToken);
-    }
   }
   return res;
 }
