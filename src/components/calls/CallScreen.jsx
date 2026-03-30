@@ -50,9 +50,15 @@ export default function CallScreen({ call, localStream, remoteStream, muted, vid
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-[60] bg-phantom-charcoal flex flex-col items-center justify-center"
     >
-      {/* Remote video (full screen for video calls) */}
+      {/* Remote video (full screen HD for video calls) */}
       {call?.type === 'video' && (
-        <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover" />
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ imageRendering: 'high-quality' }}
+        />
       )}
 
       {/* Overlay content */}
@@ -71,10 +77,17 @@ export default function CallScreen({ call, localStream, remoteStream, muted, vid
           )}
         </div>
 
-        {/* Local video PiP (small corner view) */}
+        {/* Local video PiP (mirrored for natural feel) */}
         {call?.type === 'video' && videoEnabled && (
-          <div className="absolute top-20 right-6 w-32 h-44 bg-phantom-charcoal rounded-2xl overflow-hidden shadow-elevated border border-white/10">
-            <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover mirror" />
+          <div className="absolute top-20 right-6 w-40 h-28 bg-phantom-charcoal rounded-2xl overflow-hidden shadow-elevated border-2 border-white/20">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+              style={{ transform: 'scaleX(-1)', imageRendering: 'high-quality' }}
+            />
           </div>
         )}
 

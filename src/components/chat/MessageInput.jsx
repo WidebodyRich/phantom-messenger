@@ -4,10 +4,12 @@ import { Send, Paperclip, Bitcoin, X, AlertCircle, Image, FileText, Loader2 } fr
 import { loadWalletFromSession, isValidTestnetAddress, buildTransaction } from '../../crypto/btcWallet';
 import { getUTXOs, broadcastTransaction, getBtcPrice, getTxUrl } from '../../api/bitcoin';
 import { uploadAttachment } from '../../api/attachments';
+import imageCompression from 'browser-image-compression';
 import toast from 'react-hot-toast';
 
-// Max file size: 25 MB
+// Max file size: 25 MB (images), 100 MB (videos)
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
@@ -42,14 +44,35 @@ export default function MessageInput({ onSend, recipientAddress, recipientId }) 
     setFilePreview(null);
   }, [selectedFile]);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
 
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error(`File too large (max ${formatFileSize(MAX_FILE_SIZE)})`);
+    const isVideo = file.type.startsWith('video/');
+    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_FILE_SIZE;
+
+    if (file.size > maxSize) {
+      toast.error(`File too large (max ${formatFileSize(maxSize)})`);
       return;
+    }
+
+    // Compress images for lightning-fast upload
+    if (file.type.startsWith('image/') && file.size > 500 * 1024) {
+      try {
+        const compressed = await imageCompression(file, {
+          maxSizeMB: 2,
+          maxWidthOrHeight: 2048,
+          useWebWorker: true,
+          fileType: file.type === 'image/png' ? 'image/png' : 'image/jpeg',
+          initialQuality: 0.85,
+        });
+        console.log(`[Upload] Compressed: ${formatFileSize(file.size)} → ${formatFileSize(compressed.size)}`);
+        setSelectedFile(new File([compressed], file.name, { type: compressed.type }));
+        return;
+      } catch (err) {
+        console.warn('[Upload] Compression failed, using original:', err);
+      }
     }
 
     setSelectedFile(file);

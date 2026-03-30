@@ -53,7 +53,42 @@ function AttachmentCard({ data, isMine }) {
   try { parsed = JSON.parse(data); } catch { return <p className="text-[15px]">{data}</p>; }
 
   const isImage = parsed.fileType?.startsWith('image/');
+  const isVideo = parsed.fileType?.startsWith('video/');
+  const isAudio = parsed.fileType?.startsWith('audio/');
   const url = parsed.url;
+
+  // Video attachment — inline player
+  if (isVideo && url) {
+    return (
+      <div className="rounded-xl overflow-hidden">
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          playsInline
+          className="max-w-full max-h-64 rounded-xl"
+        />
+        {parsed.caption && (
+          <p className="text-[15px] leading-relaxed mt-2 break-words whitespace-pre-wrap">{parsed.caption}</p>
+        )}
+      </div>
+    );
+  }
+
+  // Audio attachment — inline player
+  if (isAudio && url) {
+    return (
+      <div className="rounded-xl">
+        <audio src={url} controls preload="metadata" className="max-w-full" />
+        <p className={`text-xs mt-1 ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
+          {parsed.fileName} &middot; {formatFileSize(parsed.fileSize)}
+        </p>
+        {parsed.caption && (
+          <p className="text-[15px] leading-relaxed mt-2 break-words whitespace-pre-wrap">{parsed.caption}</p>
+        )}
+      </div>
+    );
+  }
 
   if (isImage && url) {
     return (
