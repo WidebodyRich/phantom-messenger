@@ -6,7 +6,7 @@ import * as groupsApi from '../api/groups';
 import * as keysApi from '../api/keys';
 import {
   encrypt, decrypt, startSession, hasSession, clearSession,
-  restoreEncryptionState, isInitialized, hasLocalKeys,
+  restoreEncryptionState, initializeEncryption, isInitialized, hasLocalKeys,
   getPreKeyCount, generateMorePreKeys,
   isEncryptedMessage, purgeExpiredSkippedKeys,
   waitForPreload,
@@ -35,63 +35,131 @@ export function ChatProvider({ children }) {
   const messageQueueRef = useRef([]);
 
   // ═══════════════════════════════════════════
-  // ENCRYPTION INITIALIZATION — PRELOAD + BACKGROUND
-  // main.jsx already called preloadCryptoKeys() before React rendered.
-  // Here we wait for it and set encryptionReady when done.
+  // ENCRYPTION INITIALIZATION
+  // Phase 1: Try to restore from localStorage (preloaded in main.jsx)
+  // Phase 2: If no keys exist → GENERATE fresh keys + register with server
+  // Phase 3: Background pre-key replenishment
   // ═══════════════════════════════════════════
   useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
 
-    // ── PHASE 1: Instant sync check — lets queue logic work immediately ──
-    const t0 = performance.now();
-    const localKeysExist = hasLocalKeys();
-    const t1 = performance.now();
-    console.log(`[Signal] Fast init: ${(t1 - t0).toFixed(1)}ms — ${localKeysExist ? 'HAS KEYS' : 'no keys'}`);
+    const markReady = () => {
+      if (cancelled) return;
+      setEncryptionReady(true);
+      encryptionReadyRef.current = true;
+    };
 
-    // ── PHASE 2: Wait for the preload started in main.jsx ──
-    const backgroundInit = async () => {
-      const t2 = performance.now();
-      // waitForPreload() resolves with the result of restoreEncryptionState()
-      // which was already kicked off in main.jsx before React rendered.
+    const initEncryption = async () => {
+      console.log('[Signal] === Encryption Init Start ===');
+      console.log('[Signal] hasLocalKeys():', hasLocalKeys());
+
+      // ── PHASE 1: Try restore (preload was started in main.jsx) ──
+      const t0 = performance.now();
       let restored = await waitForPreload();
-      // If preload didn't run (no local keys at startup), try restore now
-      if (!restored && localKeysExist) {
+      if (!restored && hasLocalKeys()) {
         restored = await restoreEncryptionState();
       }
-      const t3 = performance.now();
-      console.log(`[Signal] Full restore: ${(t3 - t2).toFixed(0)}ms — ${restored ? 'OK' : 'FAILED'}`);
+      const t1 = performance.now();
+      console.log(`[Signal] Restore: ${(t1 - t0).toFixed(0)}ms — ${restored ? 'OK' : 'FAILED'}`);
 
-      if (!cancelled) {
-        if (restored) {
-          setEncryptionReady(true);
-          encryptionReadyRef.current = true;
-        } else if (!localKeysExist) {
-          // No keys — fresh user. Set ready to prevent lockout;
-          // sendMessage queue will wait for key generation elsewhere.
-          console.warn('[Signal] No encryption keys found.');
-          setEncryptionReady(true);
-          encryptionReadyRef.current = true;
+      if (restored) {
+        markReady();
+        console.log('[Signal] encryptionReady = true (restored)');
+
+        // Background: replenish pre-keys if needed
+        if (!cancelled) {
+          try {
+            const count = getPreKeyCount();
+            if (count < 20) {
+              const newKeys = await generateMorePreKeys(count + 100, 80);
+              await keysApi.replenishKeys(newKeys.map((pk) => ({ index: pk.keyId, publicKey: pk.publicKey })));
+              console.log('[Signal] Pre-keys replenished in background');
+            }
+          } catch (e) {
+            console.warn('[Signal] Pre-key replenishment failed:', e.message);
+          }
         }
+        return;
       }
 
-      // Background: replenish pre-keys if needed
-      if (restored && !cancelled) {
-        try {
-          const count = getPreKeyCount();
-          if (count < 20) {
-            const newKeys = await generateMorePreKeys(count + 100, 80);
-            await keysApi.replenishKeys(newKeys.map((pk) => ({ index: pk.keyId, publicKey: pk.publicKey })));
-            console.log('[Signal] Pre-keys replenished in background');
-          }
-        } catch (e) {
-          console.warn('[Signal] Background pre-key replenishment failed:', e.message);
+      // ── PHASE 2: No keys found — GENERATE fresh key bundle ──
+      console.log('[Signal] No keys found — generating fresh key bundle...');
+
+      try {
+        const keyBundle = await initializeEncryption();
+        console.log('[Signal] Keys generated — hasLocalKeys():', hasLocalKeys());
+
+        if (!keyBundle) {
+          console.error('[Signal] Key generation returned null');
+          markReady(); // Prevent permanent lockout
+          return;
         }
+
+        // Upload public keys to server
+        try {
+          await keysApi.registerKeys({
+            identityKeyPublic: keyBundle.identityKeyPublic,
+            signedPreKeyPublic: keyBundle.signedPreKeyPublic,
+            signedPreKeySignature: keyBundle.signedPreKeySignature,
+            preKeys: keyBundle.preKeys.map((pk) => ({ index: pk.keyId, publicKey: pk.publicKey })),
+          });
+          console.log('[Signal] Keys registered with server');
+        } catch (uploadErr) {
+          console.warn('[Signal] Key upload failed (will retry in 5s):', uploadErr.message);
+          // Keys are in localStorage — we can encrypt locally.
+          // Retry upload in background so recipient can fetch our bundle.
+          setTimeout(async () => {
+            if (cancelled) return;
+            try {
+              await keysApi.registerKeys({
+                identityKeyPublic: keyBundle.identityKeyPublic,
+                signedPreKeyPublic: keyBundle.signedPreKeyPublic,
+                signedPreKeySignature: keyBundle.signedPreKeySignature,
+                preKeys: keyBundle.preKeys.map((pk) => ({ index: pk.keyId, publicKey: pk.publicKey })),
+              });
+              console.log('[Signal] Keys registered with server (retry succeeded)');
+            } catch (e) {
+              console.error('[Signal] Key upload retry failed:', e.message);
+            }
+          }, 5000);
+        }
+
+        markReady();
+        console.log('[Signal] encryptionReady = true (fresh keys)');
+      } catch (genErr) {
+        console.error('[Signal] Key generation failed:', genErr.message);
+
+        // Last resort retry after 2 seconds
+        setTimeout(async () => {
+          if (cancelled) return;
+          try {
+            console.log('[Signal] Retrying key generation...');
+            const keyBundle = await initializeEncryption();
+            if (keyBundle) {
+              try {
+                await keysApi.registerKeys({
+                  identityKeyPublic: keyBundle.identityKeyPublic,
+                  signedPreKeyPublic: keyBundle.signedPreKeyPublic,
+                  signedPreKeySignature: keyBundle.signedPreKeySignature,
+                  preKeys: keyBundle.preKeys.map((pk) => ({ index: pk.keyId, publicKey: pk.publicKey })),
+                });
+              } catch (e) {
+                console.warn('[Signal] Retry key upload failed:', e.message);
+              }
+              markReady();
+              console.log('[Signal] encryptionReady = true (retry succeeded)');
+            }
+          } catch (retryErr) {
+            console.error('[Signal] Key generation retry failed:', retryErr.message);
+            markReady(); // Prevent permanent lockout
+          }
+        }, 2000);
       }
     };
 
-    backgroundInit();
+    initEncryption();
 
     // Periodic skipped key cleanup (every 4 hours)
     purgeExpiredSkippedKeys();
