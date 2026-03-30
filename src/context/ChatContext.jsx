@@ -6,7 +6,7 @@ import * as groupsApi from '../api/groups';
 import * as keysApi from '../api/keys';
 import {
   encrypt, decrypt, startSession, hasSession, clearSession,
-  restoreEncryptionState, isInitialized,
+  restoreEncryptionState, isInitialized, hasLocalKeys,
   getPreKeyCount, generateMorePreKeys,
   isEncryptedMessage, purgeExpiredSkippedKeys,
 } from '../crypto/signalProtocol';
@@ -31,38 +31,63 @@ export function ChatProvider({ children }) {
   const cleanupRef = useRef(null);
 
   // ═══════════════════════════════════════════
-  // ENCRYPTION INITIALIZATION
+  // ENCRYPTION INITIALIZATION — TWO-PHASE
+  // Phase 1: INSTANT (< 5ms) — synchronous localStorage check
+  // Phase 2: BACKGROUND — async key import + pre-key replenishment
   // ═══════════════════════════════════════════
   useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
-    let retryInterval = null;
 
-    const init = async () => {
+    // ── PHASE 1: Instant check (synchronous, < 5ms) ──
+    const t0 = performance.now();
+    const localKeysExist = hasLocalKeys();
+    const t1 = performance.now();
+    console.log(`[Signal] Fast init: ${(t1 - t0).toFixed(1)}ms — ${localKeysExist ? 'READY' : 'need generation'}`);
+
+    if (localKeysExist) {
+      // Keys exist in localStorage — user can send immediately
+      setEncryptionReady(true);
+    }
+
+    // ── PHASE 2: Background async restore (imports CryptoKey objects) ──
+    const backgroundInit = async () => {
+      const t2 = performance.now();
       const restored = await restoreEncryptionState();
+      const t3 = performance.now();
+      console.log(`[Signal] Full restore: ${(t3 - t2).toFixed(1)}ms — ${restored ? 'OK' : 'FAILED'}`);
+
       if (!cancelled) {
-        setEncryptionReady(restored);
         if (restored) {
-          console.log('[Signal] Encryption state restored');
-        } else {
-          console.warn('[Signal] No encryption state — retrying...');
-          // Retry every second for up to 10 seconds
-          let retries = 0;
-          retryInterval = setInterval(async () => {
-            if (cancelled) { clearInterval(retryInterval); return; }
-            const ok = await restoreEncryptionState();
-            if (ok || ++retries >= 10) {
-              clearInterval(retryInterval);
-              if (!cancelled) setEncryptionReady(ok);
-              if (!ok) console.error('[Signal] Encryption failed to initialize after retries');
-            }
-          }, 1000);
+          // Full crypto keys now in memory
+          setEncryptionReady(true);
+        } else if (!localKeysExist) {
+          // No keys anywhere — this is a fresh/corrupt state
+          // The user just registered, so keys should already exist.
+          // Set ready anyway to prevent permanent lockout — sendMessage
+          // will throw a clear error if encrypt() actually fails.
+          console.error('[Signal] No encryption keys found. User must re-register or re-login.');
+          setEncryptionReady(true);
+        }
+      }
+
+      // Background: replenish pre-keys if needed
+      if (restored && !cancelled) {
+        try {
+          const count = getPreKeyCount();
+          if (count < 20) {
+            const newKeys = await generateMorePreKeys(count + 100, 80);
+            await keysApi.replenishKeys(newKeys.map((pk) => ({ index: pk.keyId, publicKey: pk.publicKey })));
+            console.log('[Signal] Pre-keys replenished in background');
+          }
+        } catch (e) {
+          console.warn('[Signal] Background pre-key replenishment failed:', e.message);
         }
       }
     };
 
-    init();
+    backgroundInit();
 
     // Periodic skipped key cleanup (every 4 hours)
     purgeExpiredSkippedKeys();
@@ -70,7 +95,6 @@ export function ChatProvider({ children }) {
 
     return () => {
       cancelled = true;
-      if (retryInterval) clearInterval(retryInterval);
       if (cleanupRef.current) clearInterval(cleanupRef.current);
     };
   }, [user]);

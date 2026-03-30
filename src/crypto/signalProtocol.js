@@ -762,7 +762,23 @@ export function hasSession(userId) {
 }
 
 /**
- * Check if encryption is initialized (identity key exists)
+ * FAST synchronous check — peeks at localStorage without importing keys.
+ * Returns true if key data EXISTS in localStorage (< 1ms).
+ * Used by ChatContext to instantly set encryptionReady for returning users.
+ */
+export function hasLocalKeys() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    return !!(parsed.identityKeyPair?.pub && parsed.identityKeyPair?.priv);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if encryption is initialized (identity key exists in memory)
  */
 export function isInitialized() {
   return !!store.identityKeyPair;

@@ -59,19 +59,21 @@ function AttachmentCard({ data, isMine }) {
   const isAudio = parsed.fileType?.startsWith('audio/');
   const url = parsed.url;
 
-  // Video attachment — inline player
+  // Video attachment — edge-to-edge, no border
   if (isVideo && url) {
     return (
-      <div className="rounded-xl overflow-hidden">
+      <div className="overflow-hidden">
         <video
           src={url}
           controls
           preload="metadata"
           playsInline
-          className="max-w-full max-h-64 rounded-xl"
+          className="w-full block max-h-72"
         />
         {parsed.caption && (
-          <p className="text-[15px] leading-relaxed mt-2 break-words whitespace-pre-wrap">{parsed.caption}</p>
+          <div className={`px-3 py-2 ${isMine ? 'bg-black text-white' : 'bg-white text-phantom-charcoal'}`}>
+            <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{parsed.caption}</p>
+          </div>
         )}
       </div>
     );
@@ -80,7 +82,7 @@ function AttachmentCard({ data, isMine }) {
   // Audio attachment — inline player
   if (isAudio && url) {
     return (
-      <div className="rounded-xl">
+      <div className={`p-3 ${isMine ? 'bg-black' : 'bg-white'}`}>
         <audio src={url} controls preload="metadata" className="max-w-full" />
         <p className={`text-xs mt-1 ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
           {parsed.fileName} &middot; {formatFileSize(parsed.fileSize)}
@@ -92,18 +94,21 @@ function AttachmentCard({ data, isMine }) {
     );
   }
 
+  // Image attachment — edge-to-edge, no border, no padding
   if (isImage && url) {
     return (
       <>
-        <div className="rounded-xl overflow-hidden cursor-pointer" onClick={() => setLightbox(true)}>
+        <div className="overflow-hidden cursor-pointer" onClick={() => setLightbox(true)}>
           <img
             src={url}
             alt={parsed.fileName || 'Image'}
-            className="max-w-full max-h-64 object-cover rounded-xl"
+            className="w-full block max-h-72 object-cover"
             loading="lazy"
           />
           {parsed.caption && (
-            <p className="text-[15px] leading-relaxed mt-2 break-words whitespace-pre-wrap">{parsed.caption}</p>
+            <div className={`px-3 py-2 ${isMine ? 'bg-black text-white' : 'bg-white text-phantom-charcoal'}`}>
+              <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{parsed.caption}</p>
+            </div>
           )}
         </div>
         {/* Lightbox */}
@@ -121,9 +126,9 @@ function AttachmentCard({ data, isMine }) {
 
   // Non-image file
   return (
-    <div className={`rounded-xl p-3 ${isMine ? 'bg-white/15' : 'bg-phantom-gray-50 border border-phantom-gray-200'}`}>
+    <div className={`p-3 ${isMine ? 'bg-black/80' : 'bg-phantom-gray-50 border border-phantom-gray-200'}`}>
       <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isMine ? 'bg-white/20' : 'bg-phantom-gray-100'}`}>
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isMine ? 'bg-white/15' : 'bg-phantom-gray-100'}`}>
           <FileText className={`w-5 h-5 ${isMine ? 'text-white' : 'text-phantom-gray-400'}`} />
         </div>
         <div className="flex-1 min-w-0">
@@ -188,11 +193,13 @@ export default function MessageBubble({ message, isMine, showTail }) {
       className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${showTail ? 'mt-3' : 'mt-0.5'}`}
     >
       <div
-        className={`max-w-[75%] md:max-w-[60%] px-4 py-2.5 relative overflow-hidden ${
-          isMine
-            ? 'bg-phantom-green text-white rounded-2xl rounded-br-md'
-            : 'bg-white text-phantom-charcoal rounded-2xl rounded-bl-md shadow-soft border border-phantom-gray-200/50'
-        }`}
+        className={`max-w-[75%] md:max-w-[60%] relative overflow-hidden ${
+          isAttachment
+            ? `rounded-2xl ${isMine ? 'rounded-br-md' : 'rounded-bl-md'}`
+            : isMine
+              ? 'bg-black text-white rounded-2xl rounded-br-md px-4 py-2.5'
+              : 'bg-white text-phantom-charcoal rounded-2xl rounded-bl-md shadow-soft border border-phantom-gray-200/50 px-4 py-2.5'
+        } ${isAttachment && !isMine ? 'shadow-soft border border-phantom-gray-200/50' : ''}`}
       >
         {/* Invisible forensic watermark */}
         <span className="absolute opacity-0 text-[1px] leading-[1px] pointer-events-none select-none" aria-hidden="true" style={{ color: 'transparent' }}>
@@ -205,7 +212,7 @@ export default function MessageBubble({ message, isMine, showTail }) {
         ) : (
           <p data-message-content className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{text}</p>
         )}
-        <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
+        <div className={`flex items-center justify-end gap-1 mt-1 px-1 ${isAttachment ? 'pb-1' : ''} ${isMine ? 'text-white/50' : 'text-phantom-gray-400'}`}>
           {/* Decryption failed indicator (received messages) */}
           {decryptionFailed && !isMine && (
             <Lock className="w-3 h-3 text-amber-400" />
@@ -214,11 +221,11 @@ export default function MessageBubble({ message, isMine, showTail }) {
           {isMine && (
             <>
               {failed ? (
-                <AlertCircle className="w-3 h-3 text-red-300" />
+                <AlertCircle className="w-3 h-3 text-red-400" />
               ) : pending ? (
                 <Clock className="w-3 h-3" />
               ) : read ? (
-                <CheckCheck className="w-3 h-3 text-blue-300" />
+                <CheckCheck className="w-3 h-3 text-blue-400" />
               ) : (
                 <Check className="w-3 h-3" />
               )}
@@ -229,7 +236,7 @@ export default function MessageBubble({ message, isMine, showTail }) {
         {isMine && failed && (
           <button
             onClick={(e) => { e.stopPropagation(); retrySendMessage(message); }}
-            className="flex items-center gap-1.5 mt-1.5 text-[11px] text-red-300 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 mt-1.5 px-1 text-[11px] text-red-400 hover:text-white transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             <span>Failed to send — tap to retry</span>
