@@ -1033,6 +1033,52 @@ export function getLocalRegistrationId() {
 }
 
 /**
+ * Get the stored identity public key for a remote user (base64).
+ * Returns null if we haven't exchanged keys with this user yet.
+ */
+export async function getRemoteIdentityKey(userId) {
+  const key = store.identityKeys.get(userId);
+  if (!key) return null;
+  return exportPublicKey(key);
+}
+
+/**
+ * Generate a safety number for verifying identity between two users.
+ * Produces a 60-digit numeric code (like Signal) from both identity public keys.
+ * Both sides compute the same number regardless of who initiates.
+ *
+ * @param {string} ourKeyB64 - Our identity public key (base64)
+ * @param {string} theirKeyB64 - Their identity public key (base64)
+ * @returns {string} 60-digit safety number formatted as 12 groups of 5
+ */
+export async function generateSafetyNumber(ourKeyB64, theirKeyB64) {
+  if (!ourKeyB64 || !theirKeyB64) return null;
+
+  // Sort keys lexicographically so both sides get the same result
+  const keys = [ourKeyB64, theirKeyB64].sort();
+
+  // Concatenate and hash iteratively (5 rounds for stronger fingerprint)
+  const encoder = new TextEncoder();
+  let material = encoder.encode(keys[0] + ':' + keys[1]);
+
+  for (let i = 0; i < 5; i++) {
+    material = new Uint8Array(await crypto.subtle.digest('SHA-256', material));
+  }
+
+  // Final hash to get 32 bytes
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', material));
+
+  // Convert 30 bytes to 60 digits (each byte → 2 decimal digits mod 100)
+  let digits = '';
+  for (let i = 0; i < 30; i++) {
+    digits += hash[i].toString().padStart(3, '0').slice(-2);
+  }
+
+  // Format as 12 groups of 5 digits
+  return digits.match(/.{5}/g).join(' ');
+}
+
+/**
  * Clear a specific session (for retry after broken session)
  */
 export function clearSession(userId) {

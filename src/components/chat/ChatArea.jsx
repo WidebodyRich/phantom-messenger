@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Phone, Video, Lock, MoreVertical, ChevronDown, Search, BellOff, Trash2, Ban } from 'lucide-react';
+import { ArrowLeft, Phone, Video, Lock, MoreVertical, ChevronDown, Search, BellOff, Trash2, Ban, ShieldCheck } from 'lucide-react';
+import SafetyNumberModal from '../SafetyNumberModal';
 import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { useCallContext } from '../../context/WebRTCContext';
@@ -21,6 +22,7 @@ export default function ChatArea({ onBack }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showSafetyNumber, setShowSafetyNumber] = useState(false);
 
   const conversationMessages = messages[activeConversation?.id] || [];
   const watermarkUrl = useMemo(() => user ? createUserWatermark(user.username) : null, [user?.username]);
@@ -155,6 +157,9 @@ export default function ChatArea({ onBack }) {
                     exit={{ opacity: 0, scale: 0.95, y: -4 }}
                     className="absolute right-0 top-11 z-50 bg-white rounded-xl shadow-elevated border border-phantom-gray-100 py-1.5 min-w-[180px]"
                   >
+                    <button onClick={() => { setShowChatMenu(false); setShowSafetyNumber(true); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-phantom-charcoal hover:bg-phantom-gray-50 transition-colors">
+                      <ShieldCheck className="w-4 h-4 text-phantom-green" /> Verify safety number
+                    </button>
                     <button onClick={() => { setShowChatMenu(false); toast('Search coming soon', { icon: '🔍' }); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-phantom-charcoal hover:bg-phantom-gray-50 transition-colors">
                       <Search className="w-4 h-4" /> Search in chat
                     </button>
@@ -217,6 +222,14 @@ export default function ChatArea({ onBack }) {
 
       {/* Input */}
       <MessageInput onSend={handleSend} recipientAddress={activeConversation?.btcAddress} recipientId={activeConversation?.id} />
+
+      {/* Safety Number Modal */}
+      <SafetyNumberModal
+        open={showSafetyNumber}
+        onClose={() => setShowSafetyNumber(false)}
+        userId={activeConversation?.peerId || activeConversation?.id}
+        username={activeConversation?.peerUsername || activeConversation?.username}
+      />
     </div>
   );
 }
