@@ -11,7 +11,11 @@ if (typeof window.process === 'undefined') window.process = process;
 // Ensure process.env exists
 if (!globalThis.process.env) globalThis.process.env = {};
 
-console.log('[Phantom] Build v3.1.0 — Signal Protocol E2E (hardened, no plaintext fallback)');
+console.log('[Phantom] Build v3.2.0 — Queue + Flush, instant send, no encryption gate');
+
+// ── Preload CryptoKeys BEFORE React renders ────────────
+import { preloadCryptoKeys } from './crypto/signalProtocol';
+preloadCryptoKeys(); // fire-and-forget — starts async import NOW
 
 // ── App ────────────────────────────────────────────────
 import React from 'react';

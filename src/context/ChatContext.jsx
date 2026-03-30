@@ -9,6 +9,7 @@ import {
   restoreEncryptionState, isInitialized, hasLocalKeys,
   getPreKeyCount, generateMorePreKeys,
   isEncryptedMessage, purgeExpiredSkippedKeys,
+  waitForPreload,
 } from '../crypto/signalProtocol';
 import { MESSAGE_POLL_INTERVAL } from '../utils/constants';
 import toast from 'react-hot-toast';
@@ -23,52 +24,55 @@ export function ChatProvider({ children }) {
   const [groups, setGroups] = useState([]);
   const [typingUsers, setTypingUsers] = useState({});
   const [encryptionReady, setEncryptionReady] = useState(false);
+  const encryptionReadyRef = useRef(false); // Sync mirror for queue checks
   const pollRef = useRef(null);
   const pendingErrorCount = useRef(0);
   // Track session init data for first messages (userId -> { ephemeralKeyPublic, usedPreKeyIndex })
   const sessionInitCache = useRef(new Map());
   // Skipped key cleanup interval
   const cleanupRef = useRef(null);
+  // Message queue — holds messages sent before encryption is ready
+  const messageQueueRef = useRef([]);
 
   // ═══════════════════════════════════════════
-  // ENCRYPTION INITIALIZATION — TWO-PHASE
-  // Phase 1: INSTANT (< 5ms) — synchronous localStorage check
-  // Phase 2: BACKGROUND — async key import + pre-key replenishment
+  // ENCRYPTION INITIALIZATION — PRELOAD + BACKGROUND
+  // main.jsx already called preloadCryptoKeys() before React rendered.
+  // Here we wait for it and set encryptionReady when done.
   // ═══════════════════════════════════════════
   useEffect(() => {
     if (!user) return;
 
     let cancelled = false;
 
-    // ── PHASE 1: Instant check (synchronous, < 5ms) ──
+    // ── PHASE 1: Instant sync check — lets queue logic work immediately ──
     const t0 = performance.now();
     const localKeysExist = hasLocalKeys();
     const t1 = performance.now();
-    console.log(`[Signal] Fast init: ${(t1 - t0).toFixed(1)}ms — ${localKeysExist ? 'READY' : 'need generation'}`);
+    console.log(`[Signal] Fast init: ${(t1 - t0).toFixed(1)}ms — ${localKeysExist ? 'HAS KEYS' : 'no keys'}`);
 
-    if (localKeysExist) {
-      // Keys exist in localStorage — user can send immediately
-      setEncryptionReady(true);
-    }
-
-    // ── PHASE 2: Background async restore (imports CryptoKey objects) ──
+    // ── PHASE 2: Wait for the preload started in main.jsx ──
     const backgroundInit = async () => {
       const t2 = performance.now();
-      const restored = await restoreEncryptionState();
+      // waitForPreload() resolves with the result of restoreEncryptionState()
+      // which was already kicked off in main.jsx before React rendered.
+      let restored = await waitForPreload();
+      // If preload didn't run (no local keys at startup), try restore now
+      if (!restored && localKeysExist) {
+        restored = await restoreEncryptionState();
+      }
       const t3 = performance.now();
-      console.log(`[Signal] Full restore: ${(t3 - t2).toFixed(1)}ms — ${restored ? 'OK' : 'FAILED'}`);
+      console.log(`[Signal] Full restore: ${(t3 - t2).toFixed(0)}ms — ${restored ? 'OK' : 'FAILED'}`);
 
       if (!cancelled) {
         if (restored) {
-          // Full crypto keys now in memory
           setEncryptionReady(true);
+          encryptionReadyRef.current = true;
         } else if (!localKeysExist) {
-          // No keys anywhere — this is a fresh/corrupt state
-          // The user just registered, so keys should already exist.
-          // Set ready anyway to prevent permanent lockout — sendMessage
-          // will throw a clear error if encrypt() actually fails.
-          console.error('[Signal] No encryption keys found. User must re-register or re-login.');
+          // No keys — fresh user. Set ready to prevent lockout;
+          // sendMessage queue will wait for key generation elsewhere.
+          console.warn('[Signal] No encryption keys found.');
           setEncryptionReady(true);
+          encryptionReadyRef.current = true;
         }
       }
 
@@ -98,6 +102,15 @@ export function ChatProvider({ children }) {
       if (cleanupRef.current) clearInterval(cleanupRef.current);
     };
   }, [user]);
+
+  // ═══════════════════════════════════════════
+  // FLUSH MESSAGE QUEUE — when encryption becomes ready
+  // ═══════════════════════════════════════════
+  useEffect(() => {
+    if (!encryptionReady) return;
+    encryptionReadyRef.current = true;
+    flushMessageQueue();
+  }, [encryptionReady]);
 
   // ═══════════════════════════════════════════
   // CONVERSATIONS
@@ -398,12 +411,90 @@ export function ChatProvider({ children }) {
   }, [user, fetchGroups]);
 
   // ═══════════════════════════════════════════
-  // SEND MESSAGE — ENCRYPTED OR FAIL. NO PLAINTEXT. EVER.
+  // MESSAGE STATUS HELPER
+  // ═══════════════════════════════════════════
+  const updateMessageStatus = useCallback((tempId, recipientId, status, failReason = null) => {
+    setMessages((prev) => ({
+      ...prev,
+      [recipientId]: (prev[recipientId] || []).map((m) =>
+        m.id === tempId
+          ? { ...m, pending: status === 'sending', failed: status === 'failed', failReason }
+          : m
+      ),
+    }));
+  }, []);
+
+  // ═══════════════════════════════════════════
+  // INTERNAL SEND — does actual encryption + API call
+  // Only called when encryption is confirmed ready (isInitialized())
+  // ═══════════════════════════════════════════
+  const sendMessageInternal = useCallback(async (recipientId, text, messageType = 'text') => {
+    // Ensure CryptoKey objects are loaded
+    if (!isInitialized()) {
+      // One last try — wait for preload
+      await waitForPreload();
+      if (!isInitialized()) {
+        throw new Error('Encryption not initialized — CryptoKeys not imported');
+      }
+    }
+
+    await ensureSession(recipientId);
+
+    const sessionInit = sessionInitCache.current.get(recipientId) || null;
+    const encrypted = await encrypt(recipientId, text, sessionInit);
+
+    if (!encrypted || !encrypted.ciphertext) {
+      throw new Error('Encryption produced empty output');
+    }
+
+    if (sessionInit) {
+      sessionInitCache.current.delete(recipientId);
+    }
+
+    const res = await messagesApi.sendMessage({
+      recipientId,
+      ciphertext: encrypted.ciphertext,
+      messageType: encrypted.messageType,
+    });
+
+    if (res?.success === false) {
+      throw new Error(res?.error || 'Server rejected message');
+    }
+
+    return res;
+  }, [ensureSession]);
+
+  // ═══════════════════════════════════════════
+  // FLUSH MESSAGE QUEUE — sends all queued messages
+  // ═══════════════════════════════════════════
+  const flushMessageQueue = useCallback(async () => {
+    const queue = [...messageQueueRef.current];
+    if (queue.length === 0) return;
+    messageQueueRef.current = [];
+    console.log(`[Phantom] Flushing ${queue.length} queued message(s)`);
+
+    for (const qm of queue) {
+      try {
+        await sendMessageInternal(qm.recipientId, qm.text, qm.messageType);
+        updateMessageStatus(qm.tempId, qm.recipientId, 'sent');
+      } catch (err) {
+        console.error('[Phantom] Queued message send failed:', err.message);
+        updateMessageStatus(qm.tempId, qm.recipientId, 'failed', err.message);
+      }
+    }
+  }, [sendMessageInternal, updateMessageStatus]);
+
+  // ═══════════════════════════════════════════
+  // SEND MESSAGE — NEVER FAILS WITH "encryption not ready"
+  // Queues the message and shows it optimistically. Queue flushes
+  // automatically when encryption becomes ready.
   // ═══════════════════════════════════════════
   const sendMessage = useCallback(async (recipientId, text, messageType = 'text') => {
-    const msgId = 'temp_' + Date.now();
+    if (!text?.trim()) return;
+
+    const tempId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const msg = {
-      id: msgId,
+      id: tempId,
       senderId: user?.id,
       recipientId,
       plaintext: text,
@@ -413,7 +504,7 @@ export function ChatProvider({ children }) {
       pending: true,
     };
 
-    // Optimistic update — show plaintext LOCALLY only
+    // ── OPTIMISTIC UI: Show message immediately ──
     setMessages((prev) => ({
       ...prev,
       [recipientId]: [...(prev[recipientId] || []), msg],
@@ -428,72 +519,41 @@ export function ChatProvider({ children }) {
       return [{ id: recipientId, lastMessage: preview, lastMessageAt: msg.createdAt, unread: 0 }, ...prev];
     });
 
-    try {
-      // ── HARD REQUIREMENT: Encryption MUST be initialized ──
-      if (!isInitialized()) {
-        throw new Error('encryption_not_ready');
+    // ── Check if encryption is ready RIGHT NOW ──
+    if (encryptionReadyRef.current && isInitialized()) {
+      // Ready — send immediately
+      try {
+        await sendMessageInternal(recipientId, text, messageType);
+        updateMessageStatus(tempId, recipientId, 'sent');
+      } catch (err) {
+        console.error('[Chat] Send failed:', err.message);
+        updateMessageStatus(tempId, recipientId, 'failed', err.message);
+
+        if (err.message.includes('No key bundle') || err.message.includes('key bundle')) {
+          toast.error("Cannot reach recipient's encryption keys. They may need to log in first.");
+        } else if (err.message.includes('No session') || err.message.includes('session')) {
+          toast.error('Secure session failed. Tap to retry.');
+        } else {
+          toast.error('Message failed to send. Tap to retry.');
+        }
       }
+    } else {
+      // ── Not ready — QUEUE the message. It will auto-send when ready. ──
+      console.log('[Phantom] Encryption not ready — queuing message, will auto-send');
+      messageQueueRef.current.push({ tempId, recipientId, text, messageType });
 
-      // ── Establish Signal Protocol session ──
-      await ensureSession(recipientId);
-
-      // ── Get session init data for PreKey message ──
-      const sessionInit = sessionInitCache.current.get(recipientId) || null;
-
-      // ── ENCRYPT — this MUST succeed or the message does NOT send ──
-      const encrypted = await encrypt(recipientId, text, sessionInit);
-
-      if (!encrypted || !encrypted.ciphertext) {
-        throw new Error('Encryption produced empty output');
-      }
-
-      // Clear session init cache after first use
-      if (sessionInit) {
-        sessionInitCache.current.delete(recipientId);
-      }
-
-      // ── Send ONLY the encrypted envelope. NO plaintext. NO content. NO text field. ──
-      const res = await messagesApi.sendMessage({
-        recipientId,
-        ciphertext: encrypted.ciphertext,
-        messageType: encrypted.messageType, // 'prekey' or 'signal'
-      });
-
-      const success = res?.success !== false;
-      if (success) {
-        setMessages((prev) => ({
-          ...prev,
-          [recipientId]: (prev[recipientId] || []).map((m) =>
-            m.id === msgId ? { ...m, pending: false, failed: false } : m
-          ),
-        }));
-      } else {
-        throw new Error(res?.error || 'Server rejected message');
-      }
-    } catch (err) {
-      const errMsg = err?.message || String(err);
-      console.error('[Chat] Send failed:', errMsg);
-
-      // Mark message as failed with the reason
-      setMessages((prev) => ({
-        ...prev,
-        [recipientId]: (prev[recipientId] || []).map((m) =>
-          m.id === msgId ? { ...m, pending: false, failed: true, failReason: errMsg } : m
-        ),
-      }));
-
-      // Show actionable error to user
-      if (errMsg === 'encryption_not_ready') {
-        toast.error('Encryption not ready. Please wait a moment and try again.');
-      } else if (errMsg.includes('No key bundle') || errMsg.includes('key bundle')) {
-        toast.error("Cannot reach recipient's encryption keys. They may need to log in first.");
-      } else if (errMsg.includes('No session') || errMsg.includes('session')) {
-        toast.error('Secure session failed. Please try again.');
-      } else {
-        toast.error('Message failed to send. Tap to retry.');
-      }
+      // Safety timeout: fail after 15 seconds if encryption never initializes
+      setTimeout(() => {
+        const idx = messageQueueRef.current.findIndex((m) => m.tempId === tempId);
+        if (idx !== -1) {
+          messageQueueRef.current.splice(idx, 1);
+          console.error('[Phantom] Queued message timed out — encryption never initialized');
+          updateMessageStatus(tempId, recipientId, 'failed', 'Encryption initialization timed out');
+          toast.error('Message timed out. Please try again.');
+        }
+      }, 15000);
     }
-  }, [user, ensureSession]);
+  }, [user, sendMessageInternal, updateMessageStatus]);
 
   // ═══════════════════════════════════════════
   // RETRY FAILED MESSAGE

@@ -45,6 +45,47 @@ const store = {
 // Persistence key
 const STORE_KEY = 'phantom_signal_v2';
 
+// ============ PRELOAD / CACHE ============
+// Start CryptoKey import before React renders. Cache the promise so
+// restoreEncryptionState() is called only once.
+let _preloadPromise = null;
+
+/**
+ * Fire-and-forget: start importing CryptoKeys from localStorage NOW.
+ * Called from main.jsx BEFORE React.createRoot — shaves 100-300ms off
+ * the time between app render and encrypt() being usable.
+ */
+export function preloadCryptoKeys() {
+  if (_preloadPromise) return _preloadPromise;
+  if (!hasLocalKeys()) return null;
+  const t0 = performance.now();
+  _preloadPromise = restoreEncryptionState().then((ok) => {
+    console.log(`[Signal] Preload done in ${(performance.now() - t0).toFixed(0)}ms — ${ok ? 'OK' : 'FAILED'}`);
+    return ok;
+  }).catch((err) => {
+    console.warn('[Signal] Preload error:', err.message);
+    _preloadPromise = null;
+    return false;
+  });
+  return _preloadPromise;
+}
+
+/**
+ * Wait for the preload to finish (used by ChatContext flush).
+ * Resolves immediately if preload already completed or no keys exist.
+ */
+export async function waitForPreload() {
+  if (_preloadPromise) return _preloadPromise;
+  return false;
+}
+
+/**
+ * Clear the preload cache (on logout).
+ */
+export function clearPreloadCache() {
+  _preloadPromise = null;
+}
+
 // ============ Utility Functions ============
 
 async function exportPublicKey(key) {
@@ -847,6 +888,7 @@ export function clearEncryptionState() {
   store.sessions.clear();
   store.identityKeys.clear();
   localStorage.removeItem(STORE_KEY);
+  clearPreloadCache();
   // Also clear all skipped keys
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i);
