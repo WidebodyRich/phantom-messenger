@@ -6,7 +6,7 @@ import { useChat } from '../../context/ChatContext';
 import ConversationItem from '../chat/ConversationItem';
 import NewChatModal from '../chat/NewChatModal';
 import WalletView from '../wallet/WalletView';
-import StorefrontView from '../wallet/StorefrontView';
+import MarketplaceHome from '../storefront/MarketplaceHome';
 import SettingsPage from '../../pages/Settings';
 import PhantomLogo from '../PhantomLogo';
 import { useNavigate } from 'react-router-dom';
@@ -141,7 +141,7 @@ export default function Sidebar() {
           <WalletView onClose={() => setTab('chats')} />
         )}
         {tab === 'shop' && (
-          <StorefrontView />
+          <MarketplaceHome />
         )}
       </div>
 
