@@ -100,3 +100,27 @@
 }
 
 @page { size: 0; }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE APP SHELL
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Safe area for bottom nav (iPhone home indicator) */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Prevent rubber-banding / overscroll on iOS */
+html, body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* PWA-like feel on mobile */
+@media (max-width: 767px) {
+  body {
+    -webkit-user-select: none;
+    user-select: text; /* Allow text selection in messages */
+    overscroll-behavior-y: contain;
+  }
+}
