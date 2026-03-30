@@ -47,19 +47,56 @@
   }
 }
 
-/* ── Screenshot & Screen Recording Protection ──────────── */
+/* ═══════════════════════════════════════════════════════════════
+   SCREENSHOT & SCREEN CAPTURE PROTECTION
+   ═══════════════════════════════════════════════════════════════ */
 
-/* Hide all content when printing (Ctrl+P workaround) */
+/* Prevent text selection on messages (allow in inputs) */
+.screen-protected [data-message-content] {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+/* Allow selection in input fields */
+.screen-protected input,
+.screen-protected textarea,
+.screen-protected [contenteditable="true"] {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Prevent image dragging */
+.screen-protected img {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  pointer-events: none;
+}
+
+/* Re-enable pointer for clickable images (lightbox, avatars, product cards) */
+.screen-protected img[data-clickable],
+.screen-protected button img,
+.screen-protected a img {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* Block printing entirely */
 @media print {
   body * {
     display: none !important;
+    visibility: hidden !important;
   }
   body::after {
-    content: 'Phantom Messenger — Screen capture is not allowed.';
-    display: block;
-    font-size: 24px;
+    content: 'Phantom Messenger — Printing is disabled for security.';
+    display: block !important;
+    visibility: visible !important;
     text-align: center;
     padding: 100px;
+    font-size: 24px;
     color: #333;
   }
 }
+
+@page { size: 0; }

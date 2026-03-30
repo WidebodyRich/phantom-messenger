@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Check, CheckCheck, AlertCircle, Clock, Bitcoin, ExternalLink, FileText, Download, Image as ImageIcon, X } from 'lucide-react';
 import { formatMessageTime } from '../../utils/formatters';
 import { getTxUrl } from '../../api/bitcoin';
+import { useAuth } from '../../context/AuthContext';
 
 function formatFileSize(bytes) {
   if (!bytes) return '';
@@ -153,6 +154,7 @@ function AttachmentCard({ data, isMine }) {
 }
 
 export default function MessageBubble({ message, isMine, showTail }) {
+  const { user } = useAuth();
   const { ciphertext, plaintext, displayText, messageType, createdAt, pending, failed, delivered, read } = message;
   const text = displayText || plaintext || ciphertext;
 
@@ -184,18 +186,22 @@ export default function MessageBubble({ message, isMine, showTail }) {
       className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${showTail ? 'mt-3' : 'mt-0.5'}`}
     >
       <div
-        className={`max-w-[75%] md:max-w-[60%] px-4 py-2.5 ${
+        className={`max-w-[75%] md:max-w-[60%] px-4 py-2.5 relative overflow-hidden ${
           isMine
             ? 'bg-phantom-green text-white rounded-2xl rounded-br-md'
             : 'bg-white text-phantom-charcoal rounded-2xl rounded-bl-md shadow-soft border border-phantom-gray-200/50'
         }`}
       >
+        {/* Invisible forensic watermark */}
+        <span className="absolute opacity-0 text-[1px] leading-[1px] pointer-events-none select-none" aria-hidden="true" style={{ color: 'transparent' }}>
+          {user?.username}-{message.id || ''}-{Date.now()}
+        </span>
         {isBtcPayment ? (
           <BtcPaymentCard data={text} isMine={isMine} />
         ) : isAttachment ? (
           <AttachmentCard data={text} isMine={isMine} />
         ) : (
-          <p className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{text}</p>
+          <p data-message-content className="text-[15px] leading-relaxed break-words whitespace-pre-wrap">{text}</p>
         )}
         <div className={`flex items-center justify-end gap-1 mt-1 ${isMine ? 'text-white/60' : 'text-phantom-gray-400'}`}>
           <span className="text-[10px]">{formatMessageTime(createdAt)}</span>
