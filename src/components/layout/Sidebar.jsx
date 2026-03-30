@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, MessageCircle, Users, Settings, LogOut, Bitcoin } from 'lucide-react';
+import { Search, Plus, MessageCircle, Users, Settings as SettingsIcon, LogOut, Bitcoin } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import ConversationItem from '../chat/ConversationItem';
 import NewChatModal from '../chat/NewChatModal';
 import WalletView from '../wallet/WalletView';
+import SettingsPage from '../../pages/Settings';
+import PhantomLogo from '../PhantomLogo';
 import { useNavigate } from 'react-router-dom';
 
 export default function Sidebar() {
@@ -27,22 +29,20 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-white">
+    <div className="flex flex-col h-full w-full bg-white relative">
       {/* Header */}
       <div className="px-5 pt-5 pb-3">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-phantom-green rounded-xl flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-xl font-bold text-phantom-charcoal">Phantom</h1>
+          <div className="flex items-center gap-2">
+            <PhantomLogo size={36} />
+            <h1 className="text-xl font-bold text-phantom-green">Phantom</h1>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setShowNewChat(true)} className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors">
               <Plus className="w-5 h-5 text-phantom-gray-500" />
             </button>
             <button onClick={() => setShowSettings(!showSettings)} className="w-9 h-9 rounded-xl hover:bg-phantom-gray-50 flex items-center justify-center transition-colors">
-              <Settings className="w-5 h-5 text-phantom-gray-500" />
+              <SettingsIcon className="w-5 h-5 text-phantom-gray-500" />
             </button>
           </div>
         </div>
@@ -79,6 +79,21 @@ export default function Sidebar() {
           </button>
         ))}
       </div>
+
+      {/* Settings Panel (overlay) */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ x: -320, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -320, opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="absolute inset-0 z-50 bg-white overflow-y-auto"
+          >
+            <SettingsPage onBack={() => setShowSettings(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-3">
