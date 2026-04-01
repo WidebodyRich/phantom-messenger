@@ -130,6 +130,16 @@ const LANDING_CSS = `
   overflow: hidden;
 }
 
+.landing-page .hero #matrixCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
 .landing-page .hero-content {
   position: relative;
   z-index: 2;
@@ -1330,6 +1340,7 @@ export default function Landing() {
 
 <!-- ========== HERO ========== -->
 <section class="hero" id="hero">
+  <canvas id="matrixCanvas"></canvas>
   <div class="hero-content">
     <div class="hero-label">[ CLASSIFIED COMMUNICATION ]</div>
     <h1 class="hero-title" data-text="PHANTOM&#10;MESSENGER">PHANTOM<br>MESSENGER</h1>
@@ -1778,6 +1789,77 @@ export default function Landing() {
     };
     container.addEventListener('click', handleClick);
 
+    // ========== MATRIX RAIN (Hero section) ==========
+    let matrixAnimId;
+    const matrixSetup = () => {
+      const canvas = container.querySelector('#matrixCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const fontSize = 12;
+      const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789PHANTOM'.split('');
+
+      let columns, drops, speeds;
+      const resize = () => {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        columns = Math.floor(canvas.width / fontSize);
+        const oldDrops = drops || [];
+        const oldSpeeds = speeds || [];
+        drops = Array.from({ length: columns }, (_, i) =>
+          i < oldDrops.length ? oldDrops[i] : Math.random() * -(canvas.height / fontSize)
+        );
+        speeds = Array.from({ length: columns }, (_, i) =>
+          i < oldSpeeds.length ? oldSpeeds[i] : 0.3 + Math.random() * 0.7
+        );
+      };
+      resize();
+      window.addEventListener('resize', resize);
+
+      // Use setInterval at ~30fps for consistent speed
+      const draw = () => {
+        // Very slow fade — long trails
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.font = `bold ${fontSize}px monospace`;
+
+        for (let i = 0; i < drops.length; i++) {
+          const char = chars[Math.floor(Math.random() * chars.length)];
+          const x = i * fontSize;
+          const y = drops[i] * fontSize;
+
+          // White-green bright head
+          ctx.fillStyle = '#AAFFAA';
+          ctx.globalAlpha = 1;
+          ctx.fillText(char, x, y);
+
+          // Bright green body
+          ctx.fillStyle = '#00FF41';
+          ctx.globalAlpha = 0.8;
+          ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y - fontSize);
+
+          // Mid trail
+          ctx.fillStyle = '#00CC33';
+          ctx.globalAlpha = 0.5;
+          ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y - fontSize * 2);
+
+          ctx.globalAlpha = 1;
+
+          if (y > canvas.height && Math.random() > 0.98) {
+            drops[i] = 0;
+            speeds[i] = 0.3 + Math.random() * 0.7;
+          }
+          drops[i] += speeds[i];
+        }
+      };
+      const intervalId = setInterval(draw, 33);
+
+      return () => {
+        clearInterval(intervalId);
+        window.removeEventListener('resize', resize);
+      };
+    };
+    const cleanupMatrix = matrixSetup();
+
     // ========== PARTICLE NETWORK (Bitcoin section) ==========
     let particleAnimId;
     const particleSetup = () => {
@@ -1938,6 +2020,7 @@ export default function Landing() {
       link3.remove();
 
       // Cancel animations
+      if (cleanupMatrix) cleanupMatrix();
       if (particleAnimId) cancelAnimationFrame(particleAnimId);
       if (particleResizeHandler) window.removeEventListener('resize', particleResizeHandler);
       if (cleanupTyping) cleanupTyping();
