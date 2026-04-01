@@ -1,7 +1,23 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, ArrowRight, AlertCircle, CheckCircle2, Shield, Copy, Check, AlertTriangle, Mail, Phone, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  MessageCircle,
+  ArrowRight,
+  AlertCircle,
+  CheckCircle2,
+  Shield,
+  Copy,
+  Check,
+  AlertTriangle,
+  Mail,
+  Phone,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { validatePassword } from '../utils/passwordValidation';
 import PasswordStrengthIndicator from '../components/PasswordStrengthIndicator';
@@ -9,419 +25,628 @@ import { generateWallet, saveWalletToSession } from '../crypto/btcWallet';
 import { initializeEncryption } from '../crypto/signalProtocol';
 import client from '../api/client';
 import toast from 'react-hot-toast';
+import AgeGate from '../components/AgeGate';
 
-export default function Register() {
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showOptional, setShowOptional] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState('username'); // 'username' | 'seedPhrase' | 'success'
-  const [wallet, setWallet] = useState(null);
-  const [seedSaved, setSeedSaved] = useState(false);
-  const [copiedSeed, setCopiedSeed] = useState(false);
+const Register = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
 
-  const validateUsername = (name) => {
-    if (name.length < 3) return 'Username must be at least 3 characters';
-    if (name.length > 20) return 'Username must be 20 characters or less';
-    if (!/^[a-zA-Z0-9_.]+$/.test(name)) return 'Only letters, numbers, underscores, and periods';
-    return null;
-  };
+  // Step state
+  const [step, setStep] = useState('ageVerification');
 
-  const validateForm = () => {
-    const nameErr = validateUsername(username.trim());
-    if (nameErr) return nameErr;
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Invalid email address';
-    if (password) {
-      const pwErr = validatePassword(password);
-      if (pwErr) return pwErr;
+  // Age verification state
+  const [dateOfBirth, setDateOfBirth] = useState(null);
+  const [ageVerified, setAgeVerified] = useState(false);
+
+  // Username state
+  const [username, setUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameChecking, setUsernameChecking] = useState(false);
+  const [usernameAvailable, setUsernameAvailable] = useState(false);
+
+  // Password state
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
+  // Additional fields state
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+
+  // Seed phrase state
+  const [seedPhrase, setSeedPhrase] = useState('');
+  const [seedCopied, setSeedCopied] = useState(false);
+  const [seedConfirmation, setSeedConfirmation] = useState('');
+  const [seedError, setSeedError] = useState('');
+  const [seedAcknowledged, setSeedAcknowledged] = useState(false);
+
+  // Loading states
+  const [isLoading, setIsLoading] = useState(false);
+  const [registering, setRegistering] = useState(false);
+
+  // Validation helpers
+  const validateUsername = (username) => {
+    if (username.length < 3) {
+      return 'Username must be at least 3 characters';
     }
-    if (email && !password) return 'Password required when adding an email';
-    if (phone && !/^\+?[0-9]{10,15}$/.test(phone.replace(/[\s()-]/g, ''))) return 'Invalid phone number';
-    return null;
+    if (username.length > 30) {
+      return 'Username must be 30 characters or less';
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return 'Username can only contain letters, numbers, underscores, and hyphens';
+    }
+    return '';
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
+  const validatePassword = (pwd) => {
+    const errors = [];
+    if (pwd.length < 12) errors.push('At least 12 characters');
+    if (!/[a-z]/.test(pwd)) errors.push('At least one lowercase letter');
+    if (!/[A-Z]/.test(pwd)) errors.push('At least one uppercase letter');
+    if (!/[0-9]/.test(pwd)) errors.push('At least one number');
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(pwd))
+      errors.push('At least one special character');
 
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
+    return errors;
+  };
+
+  const calculatePasswordStrength = (pwd) => {
+    const errors = validatePassword(pwd);
+    return 5 - errors.length;
+  };
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePhone = (phone) => {
+    const phoneRegex = /^[+]?[(]?[0-9]{3}[)]?[-\s.]?[0-9]{3}[-\s.]?[0-9]{4,6}$/;
+    return phoneRegex.test(phone);
+  };
+
+  // Age gate handlers
+  const handleAgeVerified = () => {
+    setAgeVerified(true);
+    setStep('username');
+  };
+
+  const handleVerifiedDOB = (dob) => {
+    setDateOfBirth(dob);
+  };
+
+  // Username handlers
+  const handleUsernameChange = (e) => {
+    const value = e.target.value.toLowerCase();
+    setUsername(value);
+
+    const error = validateUsername(value);
+    setUsernameError(error);
+    setUsernameAvailable(false);
+  };
+
+  const handleCheckUsername = async () => {
+    if (usernameError || !username) return;
+
+    setUsernameChecking(true);
+    try {
+      const response = await client.get(`/api/auth/check-username/${username}`);
+      setUsernameAvailable(response.data.available);
+      if (!response.data.available) {
+        setUsernameError('This username is already taken');
+      }
+    } catch (error) {
+      setUsernameError('Error checking username availability');
+    } finally {
+      setUsernameChecking(false);
+    }
+  };
+
+  const handleUsernameSubmit = () => {
+    if (usernameError || !usernameAvailable) {
+      handleCheckUsername();
+      return;
+    }
+    // Generate seed phrase
+    const wallet = generateWallet();
+    setSeedPhrase(wallet.mnemonic);
+    setStep('seedPhrase');
+  };
+
+  // Email validation
+  const handleEmailChange = (e) => {
+    const value = e.target.value;
+    setEmail(value);
+    if (value && !validateEmail(value)) {
+      setEmailError('Please enter a valid email address');
+    } else {
+      setEmailError('');
+    }
+  };
+
+  // Phone validation
+  const handlePhoneChange = (e) => {
+    const value = e.target.value;
+    setPhone(value);
+    if (value && !validatePhone(value)) {
+      setPhoneError('Please enter a valid phone number');
+    } else {
+      setPhoneError('');
+    }
+  };
+
+  // Password handlers
+  const handlePasswordChange = (e) => {
+    const value = e.target.value;
+    setPassword(value);
+
+    const errors = validatePassword(value);
+    if (errors.length === 0) {
+      setPasswordError('');
+    } else {
+      setPasswordError(`Missing: ${errors.join(', ')}`);
+    }
+
+    const strength = calculatePasswordStrength(value);
+    setPasswordStrength(strength);
+  };
+
+  const handleConfirmPasswordChange = (e) => {
+    const value = e.target.value;
+    setConfirmPassword(value);
+  };
+
+  // Seed phrase handlers
+  const handleCopySeed = () => {
+    navigator.clipboard.writeText(seedPhrase);
+    setSeedCopied(true);
+    setTimeout(() => setSeedCopied(false), 2000);
+  };
+
+  const handleSeedConfirmationChange = (e) => {
+    setSeedConfirmation(e.target.value);
+    setSeedError('');
+  };
+
+  const handleSeedPhraseContinue = () => {
+    if (seedConfirmation !== seedPhrase) {
+      setSeedError('Seed phrase does not match. Please try again.');
       return;
     }
 
-    setLoading(true);
+    if (!seedAcknowledged) {
+      setSeedError('Please acknowledge that you have saved your seed phrase');
+      return;
+    }
+
+    // Move to password step (if needed) or proceed to registration
+    handleRegistration();
+  };
+
+  // Registration handler
+  const handleRegistration = async () => {
+    // Final validation
+    if (!username || usernameError || !usernameAvailable) {
+      setUsernameError('Please select a valid username');
+      setStep('username');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      setStep('seedPhrase');
+      return;
+    }
+
+    if (validatePassword(password).length > 0) {
+      setPasswordError('Password does not meet requirements');
+      setStep('seedPhrase');
+      return;
+    }
+
+    if (email && !validateEmail(email)) {
+      setEmailError('Please enter a valid email address');
+      setStep('seedPhrase');
+      return;
+    }
+
+    if (phone && !validatePhone(phone)) {
+      setPhoneError('Please enter a valid phone number');
+      setStep('seedPhrase');
+      return;
+    }
+
+    setRegistering(true);
+
     try {
-      // Generate Bitcoin wallet
-      const newWallet = generateWallet();
-      setWallet(newWallet);
+      // Generate wallet
+      const wallet = generateWallet();
+      const publicKey = wallet.publicKey;
+      const encryptedPrivateKey = wallet.encryptedPrivateKey;
 
-      // Generate Signal Protocol keys
-      const signalKeys = await initializeEncryption();
+      // Initialize encryption
+      const identityKeyPair = await initializeEncryption();
 
-      // Register with backend (unified endpoint)
-      const res = await register({
-        username: username.trim(),
-        email: email.trim() || null,
-        phone: phone.replace(/[\s()-]/g, '').trim() || null,
-        password: password || null,
-        identityKeyPublic: signalKeys.identityKeyPublic,
-        signedPreKeyPublic: signalKeys.signedPreKeyPublic,
-        signedPreKeySignature: signalKeys.signedPreKeySignature,
-        preKeys: signalKeys.preKeys.map((pk) => ({
-          index: pk.keyId,
-          publicKey: pk.publicKey,
-        })),
-      });
+      // Register user
+      const registerData = {
+        username,
+        password,
+        email,
+        phone,
+        publicKey,
+        encryptedPrivateKey,
+        identityKeyPair,
+        dateOfBirth,
+      };
 
-      if (res.success) {
-        // Save wallet to session
-        await saveWalletToSession({
-          mnemonic: newWallet.mnemonic,
-          address: newWallet.address,
-          privateKey: newWallet.privateKey,
-          publicKey: newWallet.publicKey,
-        });
+      const response = await client.post('/api/auth/register', registerData);
 
-        // Store BTC address mapping for seed login (local cache)
-        const addrMap = JSON.parse(localStorage.getItem('phantom_addr_map') || '{}');
-        addrMap[newWallet.address] = username.trim();
-        localStorage.setItem('phantom_addr_map', JSON.stringify(addrMap));
+      // Save wallet to session
+      saveWalletToSession(wallet.mnemonic, publicKey);
 
-        // Save BTC address to backend for cross-device recovery
-        try {
-          await client.post('/api/wallet/address', { btcAddress: newWallet.address });
-        } catch (e) {
-          console.warn('Failed to save BTC address to server:', e.message);
-        }
+      // Register in auth context
+      register(response.data.user);
 
-        // Show seed phrase backup screen
-        setStep('seedPhrase');
-      } else {
-        setError(res.error || 'Registration failed');
-      }
-    } catch (err) {
-      setError(err.message || 'Registration failed');
-    }
-    setLoading(false);
-  };
+      setStep('success');
 
-  const handleCopySeed = () => {
-    if (wallet) {
-      navigator.clipboard.writeText(wallet.mnemonic);
-      setCopiedSeed(true);
-      toast.success('Seed phrase copied!');
-      setTimeout(() => setCopiedSeed(false), 3000);
+      // Redirect after success
+      setTimeout(() => {
+        navigate('/chat');
+      }, 2000);
+    } catch (error) {
+      const errorMessage = error.response?.data?.message || 'Registration failed. Please try again.';
+      toast.error(errorMessage);
+      setUsernameError(errorMessage);
+    } finally {
+      setRegistering(false);
     }
   };
-
-  const handleContinue = () => {
-    setStep('success');
-    toast.success('Account created!');
-    setTimeout(() => navigate('/chat'), 1500);
-  };
-
-  const seedWords = wallet?.mnemonic?.split(' ') || [];
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="min-h-screen bg-phantom-gray-50 flex items-center justify-center p-6"
-    >
+    <div className="min-h-screen bg-gradient-to-br from-phantom-gray-50 to-phantom-gray-100 flex flex-col items-center justify-center p-4">
+      {/* Header */}
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="w-full max-w-md"
+        className="mb-8 text-center"
       >
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-phantom-green rounded-2xl flex items-center justify-center shadow-green-glow">
-              <MessageCircle className="w-7 h-7 text-white" />
-            </div>
-          </Link>
-          <AnimatePresence mode="wait">
-            {step === 'username' && (
-              <motion.div key="title1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <h1 className="text-2xl font-bold text-phantom-charcoal">Create your account</h1>
-                <p className="text-phantom-gray-500 mt-1">Get started with Phantom Messenger</p>
-              </motion.div>
-            )}
-            {step === 'seedPhrase' && (
-              <motion.div key="title2" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <h1 className="text-2xl font-bold text-phantom-charcoal">Save Your Recovery Phrase</h1>
-                <p className="text-phantom-gray-500 mt-1">This is the only way to recover your wallet</p>
-              </motion.div>
-            )}
-            {step === 'success' && (
-              <motion.div key="title3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                <h1 className="text-2xl font-bold text-phantom-charcoal">You're all set!</h1>
-                <p className="text-phantom-gray-500 mt-1">Redirecting to messenger...</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <MessageCircle className="w-8 h-8 text-phantom-green" />
+          <h1 className="text-3xl font-bold text-phantom-charcoal">Phantom Messenger</h1>
         </div>
+        <p className="text-phantom-gray-600">Create your secure account</p>
+      </motion.div>
 
-        {/* Card */}
-        <div className="card">
-          <AnimatePresence mode="wait">
-            {/* Step 1: Username + Optional Fields */}
-            {step === 'username' && (
-              <motion.form
-                key="step1"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                onSubmit={handleSubmit}
-                className="space-y-4"
-              >
-                {/* Username (required) */}
+      {/* Main Content */}
+      <AnimatePresence mode="wait">
+        {/* Age Verification Step */}
+        {step === 'ageVerification' && (
+          <AgeGate key="ageGate" onAgeVerified={handleAgeVerified} onVerifiedDOB={handleVerifiedDOB} />
+        )}
+
+        {/* Username Step */}
+        {step === 'username' && (
+          <motion.div
+            key="username"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-md"
+          >
+            <div className="card bg-phantom-gray-50 border border-phantom-gray-200 rounded-lg p-8 shadow-lg">
+              <h2 className="text-2xl font-bold text-phantom-charcoal mb-6">Choose Your Username</h2>
+
+              <div className="space-y-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-phantom-charcoal mb-2">
-                    Choose a username <span className="text-red-400">*</span>
+                    Username
                   </label>
                   <input
                     type="text"
                     value={username}
-                    onChange={(e) => { setUsername(e.target.value); setError(''); }}
-                    placeholder="phantom_user"
-                    className="input-field"
-                    autoFocus
-                    maxLength={20}
-                    autoComplete="username"
+                    onChange={handleUsernameChange}
+                    placeholder="Enter your username"
+                    className="input-field w-full bg-white border border-phantom-gray-300 text-phantom-charcoal rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-phantom-green"
                   />
-                  <p className="mt-1.5 text-xs text-phantom-gray-400">3-20 characters, letters, numbers, underscores, periods</p>
+                  {usernameError && (
+                    <p className="text-red-600 text-sm mt-1 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" />
+                      {usernameError}
+                    </p>
+                  )}
+                  {usernameAvailable && (
+                    <p className="text-phantom-green text-sm mt-1 flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Username is available
+                    </p>
+                  )}
                 </div>
 
-                {/* Optional fields toggle */}
-                <button
-                  type="button"
-                  onClick={() => setShowOptional(!showOptional)}
-                  className="w-full flex items-center justify-between py-2 px-1 text-sm font-medium text-phantom-green hover:text-phantom-green/80 transition-colors"
-                >
-                  <span>Add email, phone, or password (optional)</span>
-                  {showOptional ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </button>
-
-                {/* Optional fields */}
-                <AnimatePresence>
-                  {showOptional && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="space-y-3 overflow-hidden"
-                    >
-                      {/* Email */}
-                      <div>
-                        <label className="block text-xs font-medium text-phantom-gray-500 mb-1.5">
-                          <Mail className="w-3.5 h-3.5 inline mr-1" />
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={(e) => { setEmail(e.target.value); setError(''); }}
-                          placeholder="you@example.com"
-                          className="input-field text-sm"
-                          autoComplete="email"
-                        />
-                      </div>
-
-                      {/* Phone */}
-                      <div>
-                        <label className="block text-xs font-medium text-phantom-gray-500 mb-1.5">
-                          <Phone className="w-3.5 h-3.5 inline mr-1" />
-                          Phone number
-                        </label>
-                        <input
-                          type="tel"
-                          value={phone}
-                          onChange={(e) => { setPhone(e.target.value); setError(''); }}
-                          placeholder="+1 (555) 123-4567"
-                          className="input-field text-sm"
-                          autoComplete="tel"
-                        />
-                      </div>
-
-                      {/* Password */}
-                      <div>
-                        <label className="block text-xs font-medium text-phantom-gray-500 mb-1.5">
-                          Password {email && <span className="text-red-400">*</span>}
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={password}
-                            onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                            placeholder="Min 12 chars, upper, lower, number, symbol"
-                            className="input-field text-sm pr-10"
-                            autoComplete="new-password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-phantom-gray-400 hover:text-phantom-gray-600"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                        <PasswordStrengthIndicator password={password} />
-                        {email && !password && (
-                          <p className="mt-1 text-xs text-amber-500">Password required with email</p>
-                        )}
-                      </div>
-
-                      <p className="text-[11px] text-phantom-gray-400 leading-relaxed">
-                        Adding email or phone gives you extra login options. Your recovery phrase always works regardless.
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="bg-phantom-gray-50 rounded-xl p-4 flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-phantom-green mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-phantom-gray-500 leading-relaxed">
-                    <p className="font-medium text-phantom-charcoal mb-1">End-to-end encrypted</p>
-                    Signal Protocol keys and a Bitcoin wallet are generated automatically. No email or phone number required.
+                {/* Email */}
+                <div>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">
+                    Email (optional)
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 w-5 h-5 text-phantom-gray-400" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={handleEmailChange}
+                      placeholder="your@email.com"
+                      className="input-field w-full bg-white border border-phantom-gray-300 text-phantom-charcoal rounded px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-phantom-green"
+                    />
                   </div>
+                  {emailError && (
+                    <p className="text-red-600 text-sm mt-1">{emailError}</p>
+                  )}
                 </div>
 
-                {error && (
-                  <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-500 text-sm">
-                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                    {error}
-                  </motion.div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading || !username.trim()}
-                  className="btn-primary w-full flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Generating keys...</span>
-                    </div>
-                  ) : (
-                    <>Create Account <ArrowRight className="w-4 h-4" /></>
+                {/* Phone */}
+                <div>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">
+                    Phone (optional)
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 w-5 h-5 text-phantom-gray-400" />
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={handlePhoneChange}
+                      placeholder="+1 (555) 123-4567"
+                      className="input-field w-full bg-white border border-phantom-gray-300 text-phantom-charcoal rounded px-4 py-2 pl-10 focus:outline-none focus:ring-2 focus:ring-phantom-green"
+                    />
+                  </div>
+                  {phoneError && (
+                    <p className="text-red-600 text-sm mt-1">{phoneError}</p>
                   )}
-                </button>
-              </motion.form>
-            )}
+                </div>
 
-            {/* Step 2: Seed Phrase Backup */}
-            {step === 'seedPhrase' && (
-              <motion.div
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
-                className="space-y-4"
+                {/* Password */}
+                <div>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={handlePasswordChange}
+                      placeholder="Enter your password"
+                      className="input-field w-full bg-white border border-phantom-gray-300 text-phantom-charcoal rounded px-4 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-phantom-green"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-3 text-phantom-gray-600 hover:text-phantom-charcoal"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {password && <PasswordStrengthIndicator strength={passwordStrength} />}
+                  {passwordError && (
+                    <p className="text-red-600 text-sm mt-1">{passwordError}</p>
+                  )}
+                </div>
+
+                {/* Confirm Password */}
+                <div>
+                  <label className="block text-sm font-medium text-phantom-charcoal mb-2">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={handleConfirmPasswordChange}
+                      placeholder="Confirm your password"
+                      className="input-field w-full bg-white border border-phantom-gray-300 text-phantom-charcoal rounded px-4 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-phantom-green"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-3 text-phantom-gray-600 hover:text-phantom-charcoal"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="w-5 h-5" />
+                      ) : (
+                        <Eye className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                  {confirmPassword && password !== confirmPassword && (
+                    <p className="text-red-600 text-sm mt-1">Passwords do not match</p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                onClick={handleUsernameSubmit}
+                disabled={usernameError || !username || !password || !confirmPassword || passwordError}
+                className="btn-primary w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {/* Warning */}
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
-                  <div className="text-xs text-amber-800 leading-relaxed">
-                    <p className="font-semibold mb-1">Write these words down!</p>
-                    This recovery phrase is the ONLY way to recover your wallet and account. Store it somewhere safe. We cannot recover it for you.
-                  </div>
-                </div>
+                Continue to Backup <ArrowRight className="w-5 h-5" />
+              </button>
 
-                {/* Seed Phrase Grid */}
-                <div className="grid grid-cols-3 gap-2">
-                  {seedWords.map((word, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="bg-phantom-gray-50 rounded-lg px-3 py-2 text-center"
-                    >
-                      <span className="text-xs text-phantom-gray-400 mr-1">{i + 1}.</span>
-                      <span className="text-sm font-medium text-phantom-charcoal">{word}</span>
-                    </motion.div>
+              <p className="text-center text-sm text-phantom-gray-600 mt-6">
+                Already have an account?{' '}
+                <Link to="/login" className="text-phantom-green hover:underline font-semibold">
+                  Sign in
+                </Link>
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Seed Phrase Step */}
+        {step === 'seedPhrase' && (
+          <motion.div
+            key="seedPhrase"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-2xl"
+          >
+            <div className="card bg-phantom-gray-50 border border-phantom-gray-200 rounded-lg p-8 shadow-lg">
+              <div className="flex items-start gap-3 mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-yellow-900 mb-1">Save Your Recovery Phrase</h3>
+                  <p className="text-sm text-yellow-800">
+                    This 12-word phrase is the only way to recover your account. Store it somewhere safe.
+                  </p>
+                </div>
+              </div>
+
+              <h2 className="text-2xl font-bold text-phantom-charcoal mb-6">Your Recovery Phrase</h2>
+
+              {/* Seed Phrase Display */}
+              <div className="bg-phantom-charcoal rounded-lg p-6 mb-6">
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  {seedPhrase.split(' ').map((word, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <span className="text-phantom-gray-400 text-sm font-medium w-6">{index + 1}.</span>
+                      <span className="text-phantom-green font-mono text-sm">{word}</span>
+                    </div>
                   ))}
                 </div>
 
-                {/* Copy Button */}
                 <button
                   onClick={handleCopySeed}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-phantom-gray-600 bg-phantom-gray-50 hover:bg-phantom-gray-100 rounded-xl transition-colors"
+                  className="w-full mt-4 flex items-center justify-center gap-2 bg-phantom-green hover:bg-phantom-green/90 text-white py-2 px-4 rounded transition-all duration-200"
                 >
-                  {copiedSeed ? (
-                    <><Check className="w-4 h-4 text-phantom-green" /> Copied!</>
+                  {seedCopied ? (
+                    <>
+                      <Check className="w-5 h-5" />
+                      Copied!
+                    </>
                   ) : (
-                    <><Copy className="w-4 h-4" /> Copy recovery phrase</>
+                    <>
+                      <Copy className="w-5 h-5" />
+                      Copy to Clipboard
+                    </>
                   )}
                 </button>
+              </div>
 
-                {/* BTC Address */}
-                <div className="bg-phantom-gray-50 rounded-xl p-3 text-center">
-                  <p className="text-xs text-phantom-gray-400 mb-1">Your Bitcoin Testnet Address</p>
-                  <p className="text-xs font-mono text-phantom-charcoal break-all">{wallet?.address}</p>
-                </div>
-
-                {/* Checkbox + Continue */}
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={seedSaved}
-                    onChange={(e) => setSeedSaved(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-phantom-gray-300 text-phantom-green focus:ring-phantom-green"
-                  />
-                  <span className="text-sm text-phantom-gray-600">
-                    I have saved my recovery phrase in a safe place
-                  </span>
+              {/* Seed Confirmation */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-phantom-charcoal mb-2">
+                  Verify Your Phrase
                 </label>
+                <textarea
+                  value={seedConfirmation}
+                  onChange={handleSeedConfirmationChange}
+                  placeholder="Paste your seed phrase here to confirm you saved it correctly"
+                  className="input-field w-full bg-white border border-phantom-gray-300 text-phantom-charcoal rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-phantom-green h-20"
+                />
+                {seedError && (
+                  <p className="text-red-600 text-sm mt-2 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    {seedError}
+                  </p>
+                )}
+              </div>
 
-                <button
-                  onClick={handleContinue}
-                  disabled={!seedSaved}
-                  className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-40"
-                >
-                  Continue to Messenger <ArrowRight className="w-4 h-4" />
-                </button>
-              </motion.div>
-            )}
+              {/* Acknowledgment */}
+              <label className="flex items-start gap-3 mb-6 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={seedAcknowledged}
+                  onChange={(e) => setSeedAcknowledged(e.target.checked)}
+                  className="mt-1 w-5 h-5 accent-phantom-green"
+                />
+                <span className="text-sm text-phantom-gray-700">
+                  I have saved my recovery phrase in a safe location and understand that I cannot recover my
+                  account without it
+                </span>
+              </label>
 
-            {/* Step 3: Success */}
-            {step === 'success' && (
-              <motion.div
-                key="step3"
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="text-center py-8"
+              <button
+                onClick={handleSeedPhraseContinue}
+                disabled={!seedAcknowledged || registering}
+                className="btn-primary w-full py-3 px-4 rounded-lg font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="w-16 h-16 bg-phantom-green/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                {registering ? 'Creating Account...' : 'Create Account'}
+                {!registering && <ArrowRight className="w-5 h-5" />}
+              </button>
+
+              <button
+                onClick={() => setStep('username')}
+                className="w-full mt-4 py-3 px-4 rounded-lg font-semibold text-phantom-charcoal hover:bg-phantom-gray-200 transition-all duration-200"
+              >
+                Back
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Success Step */}
+        {step === 'success' && (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="w-full max-w-md"
+          >
+            <div className="card bg-phantom-gray-50 border border-phantom-gray-200 rounded-lg p-8 shadow-lg text-center">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="flex justify-center mb-6"
+              >
+                <div className="flex items-center justify-center w-16 h-16 rounded-full bg-phantom-green/20">
                   <CheckCircle2 className="w-8 h-8 text-phantom-green" />
                 </div>
-                <h3 className="text-xl font-bold text-phantom-charcoal mb-2">You're in!</h3>
-                <p className="text-phantom-gray-500">Redirecting to messenger...</p>
               </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
 
-        {step === 'username' && (
-          <p className="text-center mt-6 text-phantom-gray-500 text-sm">
-            Already have an account?{' '}
-            <Link to="/login" className="text-phantom-green font-semibold hover:underline">
-              Sign in
-            </Link>
-          </p>
+              <h2 className="text-2xl font-bold text-phantom-charcoal mb-2">Account Created!</h2>
+              <p className="text-phantom-gray-600 mb-8">
+                Welcome to Phantom Messenger. Redirecting you to your inbox...
+              </p>
+
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                className="flex justify-center"
+              >
+                <MessageCircle className="w-8 h-8 text-phantom-green" />
+              </motion.div>
+            </div>
+          </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Footer */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        className="mt-8 text-center text-sm text-phantom-gray-600 max-w-md"
+      >
+        <p>
+          By registering, you agree to our{' '}
+          <a href="#" className="text-phantom-green hover:underline">
+            Terms of Service
+          </a>{' '}
+          and{' '}
+          <a href="#" className="text-phantom-green hover:underline">
+            Privacy Policy
+          </a>
+        </p>
       </motion.div>
-    </motion.div>
+    </div>
   );
-}
+};
+
+export default Register;
