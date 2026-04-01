@@ -218,7 +218,7 @@ export default function Settings({ onBack }) {
     {
       title: 'Account',
       items: [
-        { icon: User, label: 'Profile', desc: `@${user?.username || 'unknown'}`, onClick: () => {} },
+        { icon: User, label: 'Profile', desc: `@${user?.username || 'unknown'}`, onClick: () => navigate('/profile') },
         {
           icon: Mail,
           label: 'Email',
