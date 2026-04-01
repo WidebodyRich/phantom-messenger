@@ -1795,8 +1795,8 @@ export default function Landing() {
       const canvas = container.querySelector('#matrixCanvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
-      const fontSize = 12;
-      const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789PHANTOM'.split('');
+      const fontSize = 14;
+      const chars = '01アウカケサシスセタチツテナニヌネハヒフヘマミムメヤユヨラリルレロワヲン'.split('');
 
       let columns, drops, speeds;
       const resize = () => {
@@ -1809,49 +1809,48 @@ export default function Landing() {
           i < oldDrops.length ? oldDrops[i] : Math.random() * -(canvas.height / fontSize)
         );
         speeds = Array.from({ length: columns }, (_, i) =>
-          i < oldSpeeds.length ? oldSpeeds[i] : 0.3 + Math.random() * 0.7
+          i < oldSpeeds.length ? oldSpeeds[i] : 0.2 + Math.random() * 0.4
         );
       };
       resize();
       window.addEventListener('resize', resize);
 
-      // Use setInterval at ~30fps for consistent speed
       const draw = () => {
-        // Very slow fade — long trails
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.04)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.font = `bold ${fontSize}px monospace`;
+        ctx.font = `${fontSize}px monospace`;
 
         for (let i = 0; i < drops.length; i++) {
+          // Only render ~40% of columns per frame for a sparser look
+          if (Math.random() > 0.4) {
+            drops[i] += speeds[i];
+            continue;
+          }
+
           const char = chars[Math.floor(Math.random() * chars.length)];
           const x = i * fontSize;
           const y = drops[i] * fontSize;
 
-          // White-green bright head
-          ctx.fillStyle = '#AAFFAA';
-          ctx.globalAlpha = 1;
+          // Soft green head
+          ctx.fillStyle = '#00FF41';
+          ctx.globalAlpha = 0.35;
           ctx.fillText(char, x, y);
 
-          // Bright green body
-          ctx.fillStyle = '#00FF41';
-          ctx.globalAlpha = 0.8;
+          // Faint trail
+          ctx.fillStyle = '#008F11';
+          ctx.globalAlpha = 0.15;
           ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y - fontSize);
-
-          // Mid trail
-          ctx.fillStyle = '#00CC33';
-          ctx.globalAlpha = 0.5;
-          ctx.fillText(chars[Math.floor(Math.random() * chars.length)], x, y - fontSize * 2);
 
           ctx.globalAlpha = 1;
 
-          if (y > canvas.height && Math.random() > 0.98) {
+          if (y > canvas.height && Math.random() > 0.975) {
             drops[i] = 0;
-            speeds[i] = 0.3 + Math.random() * 0.7;
+            speeds[i] = 0.2 + Math.random() * 0.4;
           }
           drops[i] += speeds[i];
         }
       };
-      const intervalId = setInterval(draw, 33);
+      const intervalId = setInterval(draw, 40);
 
       return () => {
         clearInterval(intervalId);
