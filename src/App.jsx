@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import ModerationDashboard from './pages/ModerationDashboard';
 
 export default function App() {
   const location = useLocation();
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+                        <Route path="/moderation" element={<ModerationDashboard />} />
           <Route
             path="/chat/*"
             element={
